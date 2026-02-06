@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance - Hurly</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
+    <link rel="stylesheet" href="/Css/style.css">
+    <script src="/js files/db.js"></script>
+    <link rel="stylesheet" href="/Css/attendance.css">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar" id="sidebar">
+            <div class="head">
+                <div class="user-img">
+                    <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" alt="User Image">
+                </div>
+                <div class="user-details">
+                    <p class="title">Administrator</p>
+                    <p class="name">Cavel Ellis</p>
+                </div>
+                <div class="toggle-btn" id="toggleBtn">
+                    <i class="ph ph-caret-left"></i>
+                </div>
+            </div>
+
+            <div class="nav">
+                <div class="menu">
+                    <p class="title">Main</p>
+                    <ul>
+                        <li>
+                            <a href="dashboard.html">
+                                <i class="icon ph ph-house-simple"></i>
+                                <span class="text">Dashboard</span>
+                            </a>
+                        </li>
+                        <li class="active">
+                            <a href="attendance.html">
+                                <i class="icon ph ph-user"></i>
+                                <span class="text">Attendance</span>
+                            </a> 
+                        </li>
+                        <li>
+                            <a href="Employees.html">
+                                <i class="icon ph ph-user-circle"></i>
+                                <span class="text">Employees</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="payroll.html">
+                                <i class="icon ph ph-money"></i>
+                                <span class="text">Payroll</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="reports.html">
+                                <i class="icon ph ph-book-open"></i>
+                                <span class="text">Reports</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="menu">
+                    <p class="title">Settings</p>
+                    <ul>
+                        <li>
+                            <a href="settings.html">
+                                <i class="icon ph ph-gear"></i>
+                                <span class="text">Settings</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="menu account-section">
+                    <p class="title">Account</p>
+                    <ul>
+                        <li>
+                            <a href="#">
+                                <i class="icon ph ph-info"></i>
+                                <span class="text">Help</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" id="logoutBtn">
+                                <i class="icon ph ph-sign-out"></i>
+                                <span class="text">Logout</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="page-header">
+                <div class="header-left">
+                    <h1>Attendance</h1>
+                    <p class="subtitle">Manage daily worker attendance and check-ins</p>
+                </div>
+                <div class="header-right">
+                    <div class="datetime-display">
+                        <div class="date" id="currentDate"></div>
+                        <div class="time" id="currentTime"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <div class="action-buttons">
+                    <button class="btn btn-primary">
+                        <i class="ph ph-user-plus"></i>
+                        Add Worker
+                    </button>
+                    <button class="btn btn-secondary">
+                        <i class="ph ph-list-checks"></i>
+                        Roll Call
+                    </button>
+                    <button class="btn btn-secondary">
+                        <i class="ph ph-clock"></i>
+                        Clock In/Out
+                    </button>
+                </div>
+                <div class="filters">
+                    <input type="date" class="date-input" id="filterDate">
+                    <select class="select-input">
+                        <option>All Crews</option>
+                        <option>Crew A</option>
+                        <option>Crew B</option>
+                        <option>Crew C</option>
+                    </select>
+                    <button class="btn btn-secondary">
+                        <i class="ph ph-funnel"></i>
+                        More Filters
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="attendance-table">
+                    <thead>
+                        <tr>
+                            <th>Worker Name</th>
+                            <th>Status</th>
+                            <th>Check In</th>
+                            <th>Check Out</th>
+                            <th>Hours</th>
+                            <th>Notes</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="7" class="no-data">No attendance records found. Click "Add Worker" to begin.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
+    <script src="/js files/sidebar.js"></script> 
+    <script src="/js files/attendance.js"></script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in to Huly</title>
+    <link rel="stylesheet" href="/Css/style.css">
+    <link rel="stylesheet" href="/Css/login.css">
+</head>
+<body>
+    <div class="cursor-hover" id="cursorHover"></div>
+    
+    <div class="container">
+        <div class="login-card">
+            <div class="logo">
+                <img src="/Assets/image.png" alt="Logo" style="width: 44px; height: 44px; object-fit: contain;">
+            </div>
+            
+            <h1>Sign in to Huly</h1>
+            
+            <form>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" placeholder="name@work-email.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Enter your password">
+                </div>
+                
+                <button type="submit" class="login-button">Log In</button>
+            </form>
+            
+            <div class="footer">
+                <a href="#" id="termsLink">Terms of Use</a>
+                <a href="#" id="privacyLink">Privacy Policy</a>
+            </div>
+        </div>
+    </div>
+    
+        <script src="/js files/script.js"></script>
+</body>
+<script>
+// Redirect to loading.html on login
+document.querySelector('form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    window.location.href = 'dashboard.html';
+});
+</script>
+</body>
+</html>

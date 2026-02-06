@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payroll - Hurly</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
+    <link rel="stylesheet" href="/Css/style.css">
+    <script src="/js files/db.js"></script>
+    <script src="/js files/sidebar.js"></script>
+    <script src="/js files/payroll.js"></script>
+</head>
+<body>
+<div class="container">
+    <div class="sidebar" id="sidebar">
+        <div class="head">
+            <div class="user-img">
+                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" alt="User Image">
+            </div>
+            <div class="user-details">
+                <p class="title">Administrator</p>
+                <p class="name">Cavel Ellis</p>
+            </div>
+            <div class="toggle-btn" id="toggleBtn">
+                <i class="ph ph-caret-left"></i>
+            </div>
+        </div>
+        <div class="nav">
+            <div class="menu">
+                <p class="title">Main</p>
+                <ul>
+                    <li>
+                        <a href="dashboard.html">
+                            <i class="icon ph ph-house-simple"></i>
+                            <span class="text">Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="attendance.html">
+                            <i class="icon ph ph-user"></i>
+                            <span class="text">Attendance</span>
+                        </a> 
+                    </li>
+                    <li>
+                        <a href="employees.html">
+                            <i class="icon ph ph-user-circle"></i>
+                            <span class="text">Employees</span>
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="payroll.html">
+                            <i class="icon ph ph-money"></i>
+                            <span class="text">Payroll</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="reports.html">
+                            <i class="icon ph ph-book-open"></i>
+                            <span class="text">Reports</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            <div class="menu">
+                <p class="title">Settings</p>
+                <ul>
+                    <li>
+                        <a href="settings.html">
+                            <i class="icon ph ph-gear"></i>
+                            <span class="text">Settings</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            <div class="menu account-section">
+                <p class="title">Account</p>
+                <ul>
+                    <li>
+                        <a href="#">
+                            <i class="icon ph ph-info"></i>
+                            <span class="text">Help</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" id="logoutBtn">
+                            <i class="icon ph ph-sign-out"></i>
+                            <span class="text">Logout</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="main-content" style="background:#fff; color:#111; min-height:100vh; width:100%;">
+        <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;">
+            <div>
+                <h1 style="color:#111;font-size:2.2rem;font-weight:700;letter-spacing:-1px;">Payroll</h1>
+                <p style="color:#444;font-size:1.1rem;">Manage payroll runs, deductions, and generate payslips</p>
+            </div>
+            <div class="page-actions" style="display:flex;gap:16px;">
+                <button class="btn btn-primary" id="createRunBtn" style="background:#111;color:#fff;font-weight:600;border-radius:8px;padding:12px 24px;">
+                    <i class="icon ph ph-user"></i>
+                    Create Payroll Run
+                </button>
+                <button class="btn btn-secondary" style="background:#fff;color:#111;font-weight:600;border-radius:8px;padding:12px 24px; border:1px solid #111;">
+                    <i class="icon ph ph-download"></i>
+                    Export
+                </button>
+            </div>
+        </div>
+    
+    <!-- Pay Period Selector -->
+        <div class="panel" style="padding: 20px; background:#f5f5f5; border-radius:12px; margin-bottom:32px;">
+            <div style="display: flex; gap: 16px; align-items: center; justify-content: space-between;">
+                <div style="display: flex; gap: 16px; align-items: center;">
+                    <label style="color: #111; font-weight: 600;">Pay Period:</label>
+                    <select class="input" id="payPeriodSelector" style="max-width: 300px; background:#fff; color:#111; border:1px solid #bbb; border-radius:6px; padding:8px 12px;">
+                        <option value="current">Jan 1 - Jan 15, 2025 (Current)</option>
+                        <option value="previous">Dec 16 - Dec 31, 2024</option>
+                        <option value="before">Dec 1 - Dec 15, 2024</option>
+                    </select>
+                </div>
+                <span class="badge badge-info" style="background:#fff;color:#111;padding:6px 16px;border-radius:8px; border:1px solid #bbb;">Draft</span>
+            </div>
+        </div>
+    
+    <!-- Payroll Summary -->
+        <div class="card-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-bottom:32px;">
+            <div class="kpi-card" style="background:#f5f5f5;padding:24px 20px;border-radius:12px;text-align:center;">
+                <div class="kpi-label" style="color:#444;font-size:1rem;margin-bottom:8px;">Total Hours</div>
+                <div class="kpi-value" id="kpiTotalHours" style="color:#111;font-size:2rem;font-weight:700;">1,248</div>
+            </div>
+            <div class="kpi-card" style="background:#f5f5f5;padding:24px 20px;border-radius:12px;text-align:center;">
+                <div class="kpi-label" style="color:#444;font-size:1rem;margin-bottom:8px;">Overtime Hours</div>
+                <div class="kpi-value" id="kpiOvertime" style="color:#111;font-size:2rem;font-weight:700;">180</div>
+            </div>
+            <div class="kpi-card" style="background:#f5f5f5;padding:24px 20px;border-radius:12px;text-align:center;">
+                <div class="kpi-label" style="color:#444;font-size:1rem;margin-bottom:8px;">Est. Payroll</div>
+                <div class="kpi-value" id="kpiEstimate" style="color:#111;font-size:2rem;font-weight:700;">$45,360</div>
+            </div>
+        </div>
+    
+    <!-- Payroll Table -->
+        <div class="panel" style="background:#f5f5f5; border-radius:12px; padding:0 0 24px 0;">
+            <table class="table" style="width:100%;color:#111;">
+            <thead>
+                <tr style="background:#eee; color:#111;">
+                    <th style="padding:12px 8px;">Period</th>
+                    <th style="padding:12px 8px;">Employees</th>
+                    <th style="padding:12px 8px;">Total</th>
+                    <th style="padding:12px 8px;">Status</th>
+                    <th style="padding:12px 8px;">Created</th>
+                    <th style="padding:12px 8px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Payroll runs will be dynamically populated by payroll.js -->
+            </tbody>
+            </table>
+        </div>
+    
+        <div style="display: flex; gap: 12px; margin-top: 24px;">
+            <!-- Action buttons handled by payroll.js modal -->
+        </div>
+    </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
+</body>
+</html>

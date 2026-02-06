@@ -1,0 +1,108 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Hurly</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
+    <link rel="stylesheet" href="/Css/style.css">
+    <script src="/js files/db.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar" id="sidebar">
+            <div class="head">
+                <div class="user-img">
+                    <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" alt="User Image">
+                </div>
+                <div class="user-details">
+                    <p class="title">Administrator</p>
+                    <p class="name">Cavel Ellis</p>
+                </div>
+                <div class="toggle-btn" id="toggleBtn">
+                    <i class="ph ph-caret-left"></i>
+                </div>
+            </div>
+
+            <div class="nav">
+                <div class="menu">
+                    <p class="title">Main</p>
+                    <ul>
+                        <li class="active">
+                            <a href="dashboard.html">
+                                <i class="icon ph ph-house-simple"></i>
+                                <span class="text">Dashboard</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="attendance.html">
+                                <i class="icon ph ph-user"></i>
+                                <span class="text">Attendance</span>
+                            </a> 
+                        </li>
+                        <li>
+                            <a href="Employees.html">
+                                <i class="icon ph ph-user-circle"></i>
+                                <span class="text">Employees</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="payroll.html">
+                                <i class="icon ph ph-money"></i>
+                                <span class="text">Payroll</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="reports.html">
+                                <i class="icon ph ph-book-open"></i>
+                                <span class="text">Reports</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="menu">
+                    <p class="title">Settings</p>
+                    <ul>
+                        <li>
+                            <a href="#">
+                                <i class="icon ph ph-gear"></i>
+                                <span class="text">Settings</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="menu account-section">
+                    <p class="title">Account</p>
+                    <ul>
+                        <li>
+                            <a href="#">
+                                <i class="icon ph ph-info"></i>
+                                <span class="text">Help</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" id="logoutBtn">
+                                <i class="icon ph ph-sign-out"></i>
+                                <span class="text">Logout</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <h1>Welcome to Dashboard</h1>
+            <p>Your navigation sidebar with clean menu structure.</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
+    <script src="/js files/dash.js"></script>
+    <script src="/js files/sidebar.js"></script> 
+</body>
+</html>
