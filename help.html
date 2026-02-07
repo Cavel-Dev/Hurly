@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Help - Hurly</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
+    <link rel="stylesheet" href="CSS/style.css">
+    <script src="JS%20files/db.js"></script>
+    <script src="JS%20files/sidebar.js"></script>
+</head>
+<body>
+<div class="container">
+    <div class="sidebar" id="sidebar">
+        <div class="head">
+            <div class="user-img">
+                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" alt="User Image">
+            </div>
+            <div class="user-details">
+                <p class="title">Administrator</p>
+                <p class="name">Cavel Ellis</p>
+            </div>
+            <div class="toggle-btn" id="toggleBtn">
+                <i class="ph ph-caret-left"></i>
+            </div>
+        </div>
+        <div class="nav">
+            <div class="menu">
+                <p class="title">Main</p>
+                <ul>
+                    <li>
+                        <a href="dashboard.html">
+                            <i class="icon ph ph-house-simple"></i>
+                            <span class="text">Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="attendance.html">
+                            <i class="icon ph ph-user"></i>
+                            <span class="text">Attendance</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="employees.html">
+                            <i class="icon ph ph-user-circle"></i>
+                            <span class="text">Employees</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="payroll.html">
+                            <i class="icon ph ph-money"></i>
+                            <span class="text">Payroll</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="reports.html">
+                            <i class="icon ph ph-book-open"></i>
+                            <span class="text">Reports</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="settings.html">
+                            <i class="icon ph ph-gear"></i>
+                            <span class="text">Settings</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="menu account-section">
+                <p class="title">Account</p>
+                <ul>
+                    <li class="active">
+                        <a href="help.html">
+                            <i class="icon ph ph-info"></i>
+                            <span class="text">Help</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" id="logoutBtn">
+                            <i class="icon ph ph-sign-out"></i>
+                            <span class="text">Logout</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content" style="background:#fff;color:#111;min-height:100vh;width:100%;padding:40px 32px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:28px;">
+            <div>
+                <h1 style="font-size:2.2rem;font-weight:700;letter-spacing:-1px;margin-bottom:6px;">Help & Support</h1>
+                <p style="color:#444;font-size:1.05rem;">Quick answers, guides, and contact details.</p>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <a class="btn btn-secondary" href="reports.html" style="background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Export Reports</a>
+                <a class="btn btn-secondary" href="payroll.html" style="background:#fff;color:#111;border:1px solid #111;border-radius:10px;padding:10px 16px;">Go to Payroll</a>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px;">
+            <div style="grid-column:span 7;background:#f5f5f5;border-radius:14px;padding:20px;">
+                <h2 style="margin:0 0 12px 0;font-size:1.2rem;">Getting Started</h2>
+                <div style="display:grid;gap:12px;">
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">
+                        <strong>Add employees</strong>
+                        <div style="color:#555;margin-top:6px;">Go to Employees and click Add Employee to create staff profiles.</div>
+                    </div>
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">
+                        <strong>Record attendance</strong>
+                        <div style="color:#555;margin-top:6px;">In Attendance, use Add Worker, Roll Call, or Clock In/Out.</div>
+                    </div>
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">
+                        <strong>Create payroll</strong>
+                        <div style="color:#555;margin-top:6px;">Open Payroll, click Create Payroll Run, choose tasks, days, and status.</div>
+                    </div>
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">
+                        <strong>Export reports</strong>
+                        <div style="color:#555;margin-top:6px;">Go to Reports, filter by date, then download PDF.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="grid-column:span 5;background:#f5f5f5;border-radius:14px;padding:20px;">
+                <h2 style="margin:0 0 12px 0;font-size:1.2rem;">Quick Help</h2>
+                <div style="display:grid;gap:10px;">
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;">
+                        <strong>Payroll PDF not downloading?</strong>
+                        <div style="color:#555;margin-top:6px;">Refresh the page and try again. If offline, PDF export may be blocked.</div>
+                    </div>
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;">
+                        <strong>Missing payroll runs in Reports?</strong>
+                        <div style="color:#555;margin-top:6px;">Clear the filter or expand the date range.</div>
+                    </div>
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;">
+                        <strong>Need to edit a site?</strong>
+                        <div style="color:#555;margin-top:6px;">Go to Settings, open Work Sites, and click Edit.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="grid-column:span 12;background:#f5f5f5;border-radius:14px;padding:20px;">
+                <h2 style="margin:0 0 12px 0;font-size:1.2rem;">Contact</h2>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">
+                        <div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;">Email</div>
+                        <div style="font-weight:600;margin-top:6px;">support@hurly.app</div>
+                    </div>
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">
+                        <div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;">Phone</div>
+                        <div style="font-weight:600;margin-top:6px;">(876) 555-0123</div>
+                    </div>
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;">
+                        <div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;">Hours</div>
+                        <div style="font-weight:600;margin-top:6px;">Mon–Fri, 9:00–5:00</div>
+                    </div>
+                </div>
+                <div style="margin-top:12px;color:#555;">Update contact details in Settings → Company Profile.</div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
+</body>
+</html>

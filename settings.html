@@ -6,9 +6,9 @@
     <title>Settings - Hurly</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
-    <link rel="stylesheet" href="/Css/style.css">
-    <script src="/js files/db.js"></script>
-    <script src="/js files/sidebar.js"></script>
+    <link rel="stylesheet" href="CSS/style.css">
+    <script src="JS%20files/db.js"></script>
+    <script src="JS%20files/sidebar.js"></script>
 </head>
 <body>
 <div class="container">
@@ -71,8 +71,7 @@
                 <p class="title">Account</p>
                 <ul>
                     <li>
-                        <a href="#">
-                            <i class="icon ph ph-info"></i>
+                        <a href="help.html">`n                                <i class="icon ph ph-info"></i>
                             <span class="text">Help</span>
                         </a>
                     </li>
@@ -87,18 +86,87 @@
         </div>
     </div>
     <div class="main-content" style="background:#fff; color:#111; min-height:100vh; width:100%;padding:40px 32px;">
-        <div class="page-header" style="margin-bottom:32px;">
-            <h1 style="color:#111;font-size:2.2rem;font-weight:700;letter-spacing:-1px;">Settings</h1>
-            <p style="color:#444;font-size:1.1rem;">Manage system preferences, company info, and integrations</p>
+        <div class="page-header" style="margin-bottom:28px;">
+            <h1 style="color:#111;font-size:2.2rem;font-weight:700;letter-spacing:-1px;margin-bottom:6px;">Settings</h1>
+            <p style="color:#444;font-size:1.05rem;">Manage company profile, payroll defaults, and work sites.</p>
         </div>
-        <!-- Settings content goes here -->
-        <div style="background:#f5f5f5; border-radius:12px; padding:32px; min-height:300px;">
-            <h2 style="color:#111; font-size:1.3rem; font-weight:600; margin-bottom:18px;">General Settings</h2>
-            <p style="color:#444;">Add your settings UI here.</p>
+
+        <div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px;">
+            <div style="grid-column:span 5;background:#f5f5f5;border-radius:14px;padding:20px;">
+                <h2 style="margin:0 0 14px 0;font-size:1.2rem;">Company Profile</h2>
+                <div style="display:grid;gap:12px;">
+                    <label style="font-weight:600;">Company Name</label>
+                    <input id="companyNameInput" type="text" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
+                    <label style="font-weight:600;">Contact Email</label>
+                    <input id="companyEmailInput" type="email" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
+                    <label style="font-weight:600;">Phone</label>
+                    <input id="companyPhoneInput" type="text" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
+                    <label style="font-weight:600;">Address</label>
+                    <textarea id="companyAddressInput" rows="3" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;"></textarea>
+                </div>
+                <button class="btn btn-secondary" id="saveCompanyBtn" style="margin-top:16px;background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Save Company</button>
+            </div>
+
+            <div style="grid-column:span 7;background:#f5f5f5;border-radius:14px;padding:20px;">
+                <h2 style="margin:0 0 14px 0;font-size:1.2rem;">Payroll Defaults</h2>
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+                    <div style="display:grid;gap:8px;">
+                        <label style="font-weight:600;">Default Daily Rate (JMD)</label>
+                        <input id="defaultDailyRateInput" type="number" min="0" step="1" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
+                    </div>
+                    <div style="display:grid;gap:8px;">
+                        <label style="font-weight:600;">Pay Period Type</label>
+                        <select id="payPeriodTypeInput" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
+                            <option value="semi-monthly">Semi-monthly (1-15, 16-end)</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" id="savePayrollSettingsBtn" style="margin-top:16px;background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Save Payroll Settings</button>
+            </div>
+
+            <div style="grid-column:span 12;background:#f5f5f5;border-radius:14px;padding:20px;">
+                <h2 style="margin:0 0 14px 0;font-size:1.2rem;">Backup & Restore</h2>
+                <p style="color:#444;margin:0 0 12px 0;">Export or import all local data (employees, attendance, payroll, sites, settings).</p>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                    <button class="btn btn-secondary" id="backupDataBtn" style="background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Download Backup</button>
+                    <label class="btn btn-secondary" style="background:#fff;color:#111;border:1px solid #111;border-radius:10px;padding:10px 16px;cursor:pointer;">
+                        Restore Backup
+                        <input type="file" id="restoreDataInput" accept="application/json" style="display:none;">
+                    </label>
+                </div>
+            </div>
+
+            <div style="grid-column:span 12;background:#f5f5f5;border-radius:14px;padding:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <h2 style="margin:0;font-size:1.2rem;">Work Sites</h2>
+                    <button class="btn btn-secondary" id="addSiteBtn" style="background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Add New Site</button>
+                </div>
+                <div style="margin-top:14px;">
+                    <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;">
+                        <thead style="background:#eee;">
+                            <tr>
+                                <th style="padding:10px;text-align:left;">Site</th>
+                                <th style="padding:10px;text-align:left;">Location</th>
+                                <th style="padding:10px;text-align:left;">Status</th>
+                                <th style="padding:10px;text-align:left;">Workers</th>
+                                <th style="padding:10px;text-align:left;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sitesTableBody">
+                            <tr>
+                                <td colspan="5" style="padding:14px;text-align:center;color:#666;">No sites found</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
+<script src="JS%20files/settings.js"></script>
 </body>
 </html>
 
@@ -139,3 +207,4 @@
     to { opacity: 1; }
 }
 </style>
+

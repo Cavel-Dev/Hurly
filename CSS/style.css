@@ -6,10 +6,29 @@
     box-sizing: border-box;
 }
 
+:root {
+    --bg: #ffffff;
+    --text: #000000;
+    --muted: #222222;
+    --panel: #f5f5f5;
+    --border: #000000;
+    --accent: #000000;
+}
+
+body.theme-dark {
+    --bg: #0b0b0b;
+    --text: #ffffff;
+    --muted: #c9c9c9;
+    --panel: #151515;
+    --border: #2a2a2a;
+    --accent: #fca311;
+}
+
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background-color: #fff;
+    background-color: var(--bg);
     min-height: 100vh;
+    color: var(--text);
 }
 
 .container {
@@ -23,9 +42,9 @@ body {
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background-color: #fff;
+    background-color: #000;
     padding: 24px 16px;
-    border-right: 1px solid #f0f0f0;
+    border-right: 1px solid var(--border);
     position: sticky;
     top: 0;
     transition: width 0.3s ease;
@@ -42,7 +61,7 @@ body {
     gap: 16px;
     padding: 16px 12px;
     margin-bottom: 24px;
-    border-bottom: 1px solid #f6f6f6;
+    border-bottom: 1px solid var(--border);
     position: relative;
 }
 
@@ -53,8 +72,8 @@ body {
     transform: translateY(-50%);
     width: 24px;
     height: 24px;
-    background: #fff;
-    border: 1px solid #000;
+    background: var(--text);
+    border: 1px solid var(--border);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -65,12 +84,12 @@ body {
 }
 
 .toggle-btn:hover {
-    background: #f5f5f5;
+    background: #111;
     transform: translateY(-50%) scale(1.1);
 }
 
 .toggle-btn i {
-    color: #757575;
+    color: #fff;
     font-size: 14px;
     transition: transform 0.3s ease;
 }
@@ -84,7 +103,7 @@ body {
     height: 44px;
     border-radius: 50%;
     overflow: hidden;
-    border: 2px solid #f0f0f0;
+    border: 2px solid var(--border);
     flex-shrink: 0;
 }
 
@@ -109,7 +128,7 @@ body {
 .user-details .title {
     font-size: 10px;
     font-weight: 500;
-    color: #757575;
+    color: #ddd;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 4px;
@@ -118,7 +137,7 @@ body {
 .user-details .name {
     font-size: 14px;
     font-weight: 600;
-    color: #000;
+    color: #fff;
 }
 
 .nav {
@@ -134,12 +153,12 @@ body {
 }
 
 .nav::-webkit-scrollbar-track {
-    background: #f5f5f5;
+    background: var(--border);
     border-radius: 10px;
 }
 
 .nav::-webkit-scrollbar-thumb {
-    background: #d0d0d0;
+    background: var(--muted);
     border-radius: 10px;
 }
 
@@ -152,13 +171,13 @@ body {
     margin-top: auto;
     margin-bottom: 0;
     padding-top: 24px;
-    border-top: 1px solid #f6f6f6;
+    border-top: 1px solid var(--border);
 }
 
 .menu .title {
     font-size: 11px;
     font-weight: 600;
-    color: #757575;
+    color: #ddd;
     text-transform: uppercase;
     letter-spacing: 1px;
     padding: 0 12px;
@@ -188,7 +207,7 @@ body {
     gap: 12px;
     padding: 12px;
     border-radius: 8px;
-    color: #757575;
+    color: #fff;
     text-decoration: none;
     font-size: 14px;
     font-weight: 500;
@@ -198,12 +217,12 @@ body {
 }
 
 .menu ul li a:hover {
-    background: #000;
+    background: #111;
     color: #fff;
 }
 
 .menu ul li.active a {
-    background: #000;
+    background: #222;
     color: #fff;
 }
 
@@ -236,19 +255,32 @@ body {
 .main-content {
     flex: 1;
     padding: 40px;
-    background-color: #0000;
+    background-color: var(--bg) !important;
+    color: var(--text) !important;
 }
 
 .main-content h1 {
     font-size: 32px;
     font-weight: 600;
     margin-bottom: 16px;
-    color: #fff;
+    color: var(--text);
 }
 
 .main-content p {
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--muted);
     font-size: 16px;
+}
+
+.theme-toggle-btn {
+    margin-left: auto;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
 }
 
 @media (max-width: 768px) {

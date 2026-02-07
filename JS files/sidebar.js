@@ -1,5 +1,6 @@
 // Sidebar JavaScript - Enhanced Version
 
+if (window.jQuery) {
 $(document).ready(function() {
     // Toggle sidebar collapse
     $('#toggleBtn').on('click', function() {
@@ -52,39 +53,58 @@ $(document).ready(function() {
         }
     });
 
-    // Enhanced logout functionality with Supabase
+    // Role guard temporarily disabled to stop forced redirects
+
     $('#logoutBtn').on('click', async function(e) {
         e.preventDefault();
-        
-        try {
-            // Check if Supabase is available
-            if (window.supabase) {
-                // Sign out from Supabase
-                const { error } = await window.supabase.auth.signOut();
-                
-                if (error) {
-                    console.error('Supabase logout error:', error);
-                    alert('Logout failed. Please try again.');
-                    return;
-                }
-            }
-            
-            // Clear any stored user data
-            localStorage.removeItem('userToken');
-            localStorage.clear();
-            sessionStorage.clear();
-            
-            // Display logout message
-            console.log('User logged out successfully');
-            
-            // Redirect to login page
+        const existing = document.getElementById('logoutToast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'logoutToast';
+        toast.textContent = 'You have logged out successfully';
+        toast.style.cssText = [
+            'position: fixed',
+            'top: 20px',
+            'left: 50%',
+            'transform: translateX(-50%)',
+            'background: #000',
+            'color: #fff',
+            'padding: 12px 20px',
+            'border-radius: 10px',
+            'box-shadow: none',
+            'font-size: 14px',
+            'font-weight: 600',
+            'letter-spacing: 0.2px',
+            'z-index: 10000',
+            'opacity: 0',
+            'transition: opacity 200ms ease'
+        ].join('; ');
+
+        document.body.appendChild(toast);
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+        });
+
+        setTimeout(() => {
+            try {
+                const auditRaw = localStorage.getItem('huly_audit');
+                const audit = auditRaw ? JSON.parse(auditRaw) : [];
+                const session = JSON.parse(localStorage.getItem('huly_session') || 'null');
+                audit.push({
+                    id: Date.now().toString(36),
+                    ts: new Date().toISOString(),
+                    actor: session ? { id: session.id, email: session.email, role: session.role } : null,
+                    action: 'logout',
+                    details: {}
+                });
+                const cutoff = Date.now() - 365 * 24 * 60 * 60 * 1000;
+                const pruned = audit.filter(item => new Date(item.ts).getTime() >= cutoff);
+                localStorage.setItem('huly_audit', JSON.stringify(pruned));
+            } catch (e) {}
+            localStorage.removeItem('huly_session');
             window.location.href = 'login.html';
-            
-        } catch (error) {
-            console.error('Logout error:', error);
-            alert('An error occurred during logout. Redirecting to login page...');
-            window.location.href = 'login.html';
-        }
+        }, 800);
     });
 
     // Close sidebar on mobile when clicking outside
@@ -122,9 +142,37 @@ $(document).ready(function() {
         });
     }
 
+    function ensureLogo() {
+        const head = document.querySelector('.head');
+        if (!head) return;
+        const userImg = head.querySelector('.user-img img');
+        if (userImg) {
+            userImg.src = 'Assets/image.png';
+            userImg.alt = 'Logo';
+        }
+    }
+
     // Initialize active menu item
     setActiveMenuItem();
+    ensureLogo();
 });
+} else {
+    document.addEventListener('DOMContentLoaded', () => {
+        const toggle = document.getElementById('toggleBtn');
+        const sidebar = document.getElementById('sidebar');
+        if (toggle && sidebar) {
+            toggle.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+            });
+        }
+        const head = document.querySelector('.head');
+        const userImg = head ? head.querySelector('.user-img img') : null;
+        if (userImg) {
+            userImg.src = 'Assets/image.png';
+            userImg.alt = 'Logo';
+        }
+    });
+}
 
 // Enhanced App class with Supabase integration
 class App {
@@ -159,8 +207,8 @@ class App {
                 const script = document.createElement('script');
                 script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js';
                 script.onload = () => {
-                    const SUPABASE_URL = "https://fyqsjyceeebarjuxztqg.supabase.co";
-                    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5cXNqeWNlZWViYXJqdXh6dHFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU5MzQ4MTAsImV4cCI6MjA4MTUxMDgxMH0.LhOoDWcVwU_ht8SKuILFXPU9Gw8CHolAhO8Qgj3BMdI";
+                    const SUPABASE_URL = "https://ncqfvcymhvjcchrwelfg.supabase.co";
+                    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcWZ2Y3ltaHZqY2NocndlbGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTg2NjksImV4cCI6MjA4NTk5NDY2OX0.93kN-rWGI8q5kd3YSdwJZfsCpACuaI2m38JU-Sxnp8I";
                     this.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                     resolve();
                 };
@@ -168,8 +216,8 @@ class App {
                 document.head.appendChild(script);
             });
         } else {
-            const SUPABASE_URL = "https://fyqsjyceeebarjuxztqg.supabase.co";
-            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5cXNqeWNlZWViYXJqdXh6dHFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU5MzQ4MTAsImV4cCI6MjA4MTUxMDgxMH0.LhOoDWcVwU_ht8SKuILFXPU9Gw8CHolAhO8Qgj3BMdI";
+            const SUPABASE_URL = "https://ncqfvcymhvjcchrwelfg.supabase.co";
+            const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcWZ2Y3ltaHZqY2NocndlbGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTg2NjksImV4cCI6MjA4NTk5NDY2OX0.93kN-rWGI8q5kd3YSdwJZfsCpACuaI2m38JU-Sxnp8I";
             this.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
     }
@@ -242,26 +290,8 @@ class App {
     }
     
     async checkAuth() {
-        try {
-            if (this.supabase) {
-                const { data: { session }, error } = await this.supabase.auth.getSession();
-                
-                if (error || !session) {
-                    console.log('No active session found');
-                    window.location.href = 'login.html';
-                    return;
-                }
-                
-                this.user = session.user;
-                console.log('User authenticated:', this.user.email);
-            }
-            
-            // Load dashboard
-            this.loadPage('dashboard');
-        } catch (error) {
-            console.error('Auth check error:', error);
-            window.location.href = 'login.html';
-        }
+        // Disabled Supabase auth check (local auth only)
+        return;
     }
     
     async logout() {
@@ -297,11 +327,4 @@ class App {
     }
 }
 
-// Initialize app when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.app = new App();
-    });
-} else {
-    window.app = new App();
-}
+// App initialization disabled (local auth only)

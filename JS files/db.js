@@ -1,4 +1,35 @@
 // Local Database Service Module
+function getSessionUser() {
+  try {
+    return JSON.parse(localStorage.getItem('huly_session') || 'null');
+  } catch (e) {
+    return null;
+  }
+}
+
+function auditLog(action, entity, details = {}) {
+  try {
+    const raw = localStorage.getItem('huly_audit');
+    const list = raw ? JSON.parse(raw) : [];
+    const user = getSessionUser();
+    list.push({
+      id: Date.now().toString(36),
+      ts: new Date().toISOString(),
+      actor: user ? { id: user.id, email: user.email, role: user.role } : null,
+      action,
+      entity,
+      details
+    });
+    const cutoff = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const pruned = list.filter(item => new Date(item.ts).getTime() >= cutoff);
+    localStorage.setItem('huly_audit', JSON.stringify(pruned));
+  } catch (e) {
+    console.warn('Audit log failed', e);
+  }
+}
+
+window.audit = { log: auditLog };
+
 class DatabaseService {
   constructor() {
     this.storagePrefix = 'huly_';
@@ -41,6 +72,7 @@ class DatabaseService {
       const newSite = { id: this.generateId(), ...siteData, created_at: new Date().toISOString() };
       sites.push(newSite);
       localStorage.setItem(this.storagePrefix + 'sites', JSON.stringify(sites));
+      if (window.audit) window.audit.log('create', 'site', { id: newSite.id, name: newSite.name });
       return newSite;
     } catch (error) {
       console.error('Error creating site:', error);
@@ -55,6 +87,7 @@ class DatabaseService {
       if (index !== -1) {
         sites[index] = { ...sites[index], ...siteData };
         localStorage.setItem(this.storagePrefix + 'sites', JSON.stringify(sites));
+        if (window.audit) window.audit.log('update', 'site', { id: siteId, changes: siteData });
         return sites[index];
       }
       return null;
@@ -69,6 +102,7 @@ class DatabaseService {
       const sites = JSON.parse(localStorage.getItem(this.storagePrefix + 'sites') || '[]');
       const filtered = sites.filter(s => s.id !== siteId);
       localStorage.setItem(this.storagePrefix + 'sites', JSON.stringify(filtered));
+      if (window.audit) window.audit.log('delete', 'site', { id: siteId });
       return true;
     } catch (error) {
       console.error('Error deleting site:', error);
@@ -96,6 +130,7 @@ class DatabaseService {
       const newEmployee = { id: this.generateId(), ...employeeData, created_at: new Date().toISOString() };
       employees.push(newEmployee);
       localStorage.setItem(this.storagePrefix + 'employees', JSON.stringify(employees));
+      if (window.audit) window.audit.log('create', 'employee', { id: newEmployee.id, name: newEmployee.name });
       return newEmployee;
     } catch (error) {
       console.error('Error creating employee:', error);
@@ -110,6 +145,7 @@ class DatabaseService {
       if (index !== -1) {
         employees[index] = { ...employees[index], ...employeeData };
         localStorage.setItem(this.storagePrefix + 'employees', JSON.stringify(employees));
+        if (window.audit) window.audit.log('update', 'employee', { id: employeeId, changes: employeeData });
         return employees[index];
       }
       return null;
@@ -124,6 +160,7 @@ class DatabaseService {
       const employees = JSON.parse(localStorage.getItem(this.storagePrefix + 'employees') || '[]');
       const filtered = employees.filter(e => e.id !== employeeId);
       localStorage.setItem(this.storagePrefix + 'employees', JSON.stringify(filtered));
+      if (window.audit) window.audit.log('delete', 'employee', { id: employeeId });
       return true;
     } catch (error) {
       console.error('Error deleting employee:', error);
@@ -136,20 +173,12 @@ class DatabaseService {
     try {
       const attendance = JSON.parse(localStorage.getItem(this.storagePrefix + 'attendance') || '[]');
       let filtered = attendance;
-
-      if (filters.date) {
-        filtered = filtered.filter(a => a.date === filters.date);
-      }
-      if (filters.siteId) {
-        filtered = filtered.filter(a => a.site_id === filters.siteId);
-      }
-      if (filters.employeeId) {
-        filtered = filtered.filter(a => a.employee_id === filters.employeeId);
-      }
-
-      return filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      if (filters.date) filtered = filtered.filter(a => a.date === filters.date || a.Date === filters.date);
+      if (filters.siteId) filtered = filtered.filter(a => (a.site_id || a.Worksite) === filters.siteId);
+      if (filters.employeeId) filtered = filtered.filter(a => String(a.employee_id || a.employee_ID) === String(filters.employeeId));
+      return filtered.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
     } catch (error) {
-      console.error('Error fetching attendance:', error);
+      console.error('Error fetching attendance from Local Storage:', error);
       return [];
     }
   }
@@ -157,12 +186,24 @@ class DatabaseService {
   async markAttendance(attendanceData) {
     try {
       const attendance = JSON.parse(localStorage.getItem(this.storagePrefix + 'attendance') || '[]');
-      const newRecord = { id: this.generateId(), ...attendanceData, created_at: new Date().toISOString() };
+      const newRecord = {
+        id: this.generateId(),
+        employee_id: attendanceData.employee_id,
+        employee_name: attendanceData.employee_name,
+        date: attendanceData.date,
+        status: attendanceData.status,
+        site_id: attendanceData.site_id || '',
+        created_at: new Date().toISOString(),
+        clock_in: attendanceData.clock_in || null,
+        clock_out: attendanceData.clock_out || null,
+        notes: attendanceData.notes || ''
+      };
       attendance.push(newRecord);
       localStorage.setItem(this.storagePrefix + 'attendance', JSON.stringify(attendance));
+      if (window.audit) window.audit.log('create', 'attendance', { id: newRecord.id, employee_id: newRecord.employee_id, status: newRecord.status });
       return newRecord;
     } catch (error) {
-      console.error('Error marking attendance:', error);
+      console.error('Error marking attendance in Local Storage:', error);
       throw error;
     }
   }
@@ -170,15 +211,20 @@ class DatabaseService {
   async updateAttendance(attendanceId, attendanceData) {
     try {
       const attendance = JSON.parse(localStorage.getItem(this.storagePrefix + 'attendance') || '[]');
-      const index = attendance.findIndex(a => a.id === attendanceId);
-      if (index !== -1) {
-        attendance[index] = { ...attendance[index], ...attendanceData };
-        localStorage.setItem(this.storagePrefix + 'attendance', JSON.stringify(attendance));
-        return attendance[index];
-      }
-      return null;
+      const index = attendance.findIndex(a => String(a.id) === String(attendanceId));
+      if (index === -1) return null;
+      attendance[index] = {
+        ...attendance[index],
+        status: attendanceData.status,
+        notes: attendanceData.notes || '',
+        clock_in: attendanceData.clock_in || null,
+        clock_out: attendanceData.clock_out || null
+      };
+      localStorage.setItem(this.storagePrefix + 'attendance', JSON.stringify(attendance));
+      if (window.audit) window.audit.log('update', 'attendance', { id: attendanceId, changes: attendanceData });
+      return attendance[index];
     } catch (error) {
-      console.error('Error updating attendance:', error);
+      console.error('Error updating attendance in Local Storage:', error);
       throw error;
     }
   }
@@ -186,11 +232,12 @@ class DatabaseService {
   async deleteAttendance(attendanceId) {
     try {
       const attendance = JSON.parse(localStorage.getItem(this.storagePrefix + 'attendance') || '[]');
-      const filtered = attendance.filter(a => a.id !== attendanceId);
+      const filtered = attendance.filter(a => String(a.id) !== String(attendanceId));
       localStorage.setItem(this.storagePrefix + 'attendance', JSON.stringify(filtered));
+      if (window.audit) window.audit.log('delete', 'attendance', { id: attendanceId });
       return true;
     } catch (error) {
-      console.error('Error deleting attendance:', error);
+      console.error('Error deleting attendance in Local Storage:', error);
       throw error;
     }
   }
@@ -221,6 +268,7 @@ class DatabaseService {
       const newRecord = { id: this.generateId(), ...payrollData, created_at: new Date().toISOString() };
       payroll.push(newRecord);
       localStorage.setItem(this.storagePrefix + 'payroll', JSON.stringify(payroll));
+      if (window.audit) window.audit.log('create', 'payroll', { id: newRecord.id, total: newRecord.total, status: newRecord.status });
       return newRecord;
     } catch (error) {
       console.error('Error creating payroll run:', error);
@@ -235,6 +283,7 @@ class DatabaseService {
       if (index !== -1) {
         payroll[index] = { ...payroll[index], ...payrollData };
         localStorage.setItem(this.storagePrefix + 'payroll', JSON.stringify(payroll));
+        if (window.audit) window.audit.log('update', 'payroll', { id: payrollId, changes: payrollData });
         return payroll[index];
       }
       return null;
@@ -249,6 +298,7 @@ class DatabaseService {
       const payroll = JSON.parse(localStorage.getItem(this.storagePrefix + 'payroll') || '[]');
       const filtered = payroll.filter(p => p.id !== payrollId);
       localStorage.setItem(this.storagePrefix + 'payroll', JSON.stringify(filtered));
+      if (window.audit) window.audit.log('delete', 'payroll', { id: payrollId });
       return true;
     } catch (error) {
       console.error('Error deleting payroll:', error);
@@ -259,4 +309,5 @@ class DatabaseService {
 
 // Export global instance
 window.db = new DatabaseService();
+
 

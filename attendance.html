@@ -6,9 +6,9 @@
     <title>Attendance - Hurly</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
-    <link rel="stylesheet" href="/Css/style.css">
-    <script src="/js files/db.js"></script>
-    <link rel="stylesheet" href="/Css/attendance.css">
+    <link rel="stylesheet" href="CSS/style.css">
+    <script src="JS%20files/db.js"></script>
+    <link rel="stylesheet" href="CSS/attendance.css">
 </head>
 <body>
     <div class="container">
@@ -79,8 +79,7 @@
                     <p class="title">Account</p>
                     <ul>
                         <li>
-                            <a href="#">
-                                <i class="icon ph ph-info"></i>
+                            <a href="help.html">`n                                <i class="icon ph ph-info"></i>
                                 <span class="text">Help</span>
                             </a>
                         </li>
@@ -111,22 +110,26 @@
 
             <div class="action-bar">
                 <div class="action-buttons">
-                    <button class="btn btn-primary">
+                    <button class="btn btn-primary" id="addWorkerBtn">
                         <i class="ph ph-user-plus"></i>
                         Add Worker
                     </button>
-                    <button class="btn btn-secondary">
+                    <button class="btn btn-secondary" id="rollCallBtn">
                         <i class="ph ph-list-checks"></i>
                         Roll Call
                     </button>
-                    <button class="btn btn-secondary">
+                    <button class="btn btn-secondary" id="clockInBtn">
                         <i class="ph ph-clock"></i>
                         Clock In/Out
                     </button>
+                    <button class="btn btn-secondary" id="deleteAttendanceBtn">
+                        <i class="ph ph-trash"></i>
+                        Delete
+                    </button>
                 </div>
                 <div class="filters">
-                    <input type="date" class="date-input" id="filterDate">
-                    <select class="select-input">
+                    <input type="date" class="date-input" id="dateFilter">
+                    <select class="select-input" id="crewFilter">
                         <option>All Crews</option>
                         <option>Crew A</option>
                         <option>Crew B</option>
@@ -143,6 +146,7 @@
                 <table class="attendance-table">
                     <thead>
                         <tr>
+                            <th>Select</th>
                             <th>Worker Name</th>
                             <th>Status</th>
                             <th>Check In</th>
@@ -163,7 +167,8 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
-    <script src="/js files/sidebar.js"></script> 
-    <script src="/js files/attendance.js"></script>
+    <script src="JS%20files/sidebar.js"></script> 
+    <script src="JS%20files/attendance.js"></script>
 </body>
 </html>
+

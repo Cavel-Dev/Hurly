@@ -33,7 +33,7 @@ $(document).ready(function() {
     
     // Set today's date as default in date filter
     const today = new Date().toISOString().split('T')[0];
-    $('#filterDate').val(today);
+    $('#dateFilter').val(today);
 });
 class Attendance {
   constructor() {
@@ -53,24 +53,6 @@ class Attendance {
       
       let attendance = await this.db.getAttendance({ date });
       
-      // If no data from database, use sample data from HTML table
-      if (!attendance || attendance.length === 0) {
-        const tbody = document.querySelector('.table tbody');
-        if (tbody && tbody.children.length > 0) {
-          // Extract existing rows as sample data
-          attendance = Array.from(tbody.querySelectorAll('tr')).map((row, idx) => ({
-            id: idx,
-            employee_name: row.children[0]?.textContent || 'N/A',
-            status: row.children[1]?.textContent?.toLowerCase().includes('present') ? 'present' : 
-                    row.children[1]?.textContent?.toLowerCase().includes('late') ? 'late' : 'absent',
-            clock_in: row.children[2]?.textContent || '',
-            clock_out: row.children[3]?.textContent || '',
-            hours: row.children[4]?.textContent || '0',
-            notes: row.children[5]?.textContent || ''
-          }));
-        }
-      }
-      
       this.populateAttendanceTable(attendance);
     } catch (error) {
       console.error('Error loading attendance:', error);
@@ -78,13 +60,13 @@ class Attendance {
   }
 
   populateAttendanceTable(attendance) {
-    const tbody = document.querySelector('.table tbody');
+    const tbody = document.querySelector('.attendance-table tbody');
     if (!tbody) return;
 
     tbody.innerHTML = '';
     
     if (!attendance || attendance.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: rgba(243, 246, 255, 0.50);">No attendance records for this date</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #666;">No attendance records for this date</td></tr>';
       return;
     }
     
@@ -95,6 +77,9 @@ class Attendance {
       const statusText = record.status === 'present' ? 'Present' : record.status === 'absent' ? 'Absent' : 'Late';
       
       row.innerHTML = `
+        <td>
+          <input type="checkbox" class="attn-select" data-id="${record.id}">
+        </td>
         <td>${record.employee_name || 'N/A'}</td>
         <td><span class="badge ${statusBadgeClass}"><span class="material-icons">${statusIcon}</span>${statusText}</span></td>
         <td>${record.clock_in || '-'}</td>
@@ -108,8 +93,10 @@ class Attendance {
   }
   
   setupEventListeners() {
+    const addWorkerBtn = document.getElementById('addWorkerBtn');
     const rollCallBtn = document.getElementById('rollCallBtn');
     const clockInBtn = document.getElementById('clockInBtn');
+    const deleteBtn = document.getElementById('deleteAttendanceBtn');
     const dateFilter = document.getElementById('dateFilter');
     const crewFilter = document.getElementById('crewFilter');
     
@@ -125,6 +112,14 @@ class Attendance {
         this.showRollCallModal();
       });
     }
+
+    if (addWorkerBtn) {
+      addWorkerBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        console.log('Add Worker button clicked');
+        this.showRollCallModal();
+      });
+    }
     
     if (clockInBtn) {
       clockInBtn.addEventListener('click', (e) => {
@@ -136,6 +131,29 @@ class Attendance {
 
     if (crewFilter) {
       crewFilter.addEventListener('change', () => this.loadAttendanceData());
+    }
+
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const selected = Array.from(document.querySelectorAll('.attn-select:checked'))
+          .map((el) => el.getAttribute('data-id'))
+          .filter(Boolean);
+        if (selected.length === 0) {
+          alert('Select at least one record to delete.');
+          return;
+        }
+        if (!confirm(`Delete ${selected.length} attendance record(s)?`)) return;
+        try {
+          for (const id of selected) {
+            await this.db.deleteAttendance(id);
+          }
+          await this.loadAttendanceData();
+        } catch (err) {
+          console.error('Error deleting attendance:', err);
+          alert('Failed to delete attendance. Please try again.');
+        }
+      });
     }
 
     // Add event delegation for edit buttons (handles both static and dynamic buttons)
@@ -181,7 +199,7 @@ class Attendance {
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(7, 10, 18, 0.85);
+      background: rgba(0, 0, 0, 0.85);
       backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
@@ -207,18 +225,18 @@ class Attendance {
           }
         }
         .modal-select option {
-          background: #090B16;
-          color: #F3F6FF;
+          background: #000;
+          color: #fff;
           padding: 8px;
         }
         .modal-select option:hover {
-          background: rgba(91, 93, 255, 0.2);
+          background: #111;
         }
       </style>
       <div style="
-        background: rgba(255, 255, 255, 0.06);
+        background: #111;
         backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.10);
+        border: 1px solid #222;
         border-radius: 16px;
         padding: 32px;
         width: 90%;
@@ -230,8 +248,8 @@ class Attendance {
           margin-bottom: 24px;
           font-size: 1.75rem;
           font-weight: 700;
-          color: #F3F6FF;
-          background: linear-gradient(135deg, #FFB86B, #FF8A3D);
+          color: #fff;
+          background: #000;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -242,16 +260,16 @@ class Attendance {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: rgba(243, 246, 255, 0.70);
+            color: #999;
             font-size: 0.95rem;
           ">Status:</label>
           <select id="editStatusSelect" class="input modal-select" style="
             width: 100%;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-size: 1rem;
             transition: all 0.3s ease;
           ">
@@ -266,16 +284,16 @@ class Attendance {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: rgba(243, 246, 255, 0.70);
+            color: #999;
             font-size: 0.95rem;
           ">Check In:</label>
           <input type="time" id="editCheckIn" class="input" style="
             width: 100%;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-size: 1rem;
             transition: all 0.3s ease;
             color-scheme: dark;
@@ -287,16 +305,16 @@ class Attendance {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: rgba(243, 246, 255, 0.70);
+            color: #999;
             font-size: 0.95rem;
           ">Check Out:</label>
           <input type="time" id="editCheckOut" class="input" style="
             width: 100%;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-size: 1rem;
             transition: all 0.3s ease;
             color-scheme: dark;
@@ -308,16 +326,16 @@ class Attendance {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: rgba(243, 246, 255, 0.70);
+            color: #999;
             font-size: 0.95rem;
           ">Notes:</label>
           <textarea id="editNotes" class="input" style="
             width: 100%;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-size: 1rem;
             resize: vertical;
             min-height: 80px;
@@ -330,10 +348,10 @@ class Attendance {
           <button id="cancelEditBtn" class="btn btn-secondary" style="
             flex: 1;
             padding: 12px 24px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -341,14 +359,14 @@ class Attendance {
           <button id="saveEditBtn" class="btn btn-primary" style="
             flex: 1;
             padding: 12px 24px;
-            background: linear-gradient(135deg, #FFB86B, #FF8A3D);
+            background: #000;
             border: none;
             border-radius: 12px;
-            color: #000;
+            color: #fff;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(255, 138, 61, 0.3);
+            box-shadow: none;
           ">Save</button>
         </div>
       </div>
@@ -359,13 +377,13 @@ class Attendance {
     const inputs = modal.querySelectorAll('.input');
     inputs.forEach(input => {
       input.addEventListener('focus', function() {
-        this.style.background = 'rgba(255, 255, 255, 0.08)';
-        this.style.borderColor = '#5B5DFF';
-        this.style.boxShadow = '0 0 12px rgba(91, 93, 255, 0.2)';
+        this.style.background = '#111';
+        this.style.borderColor = '#fff';
+        this.style.boxShadow = '0 0 12px #111';
       });
       input.addEventListener('blur', function() {
-        this.style.background = 'rgba(255, 255, 255, 0.05)';
-        this.style.borderColor = 'rgba(255, 255, 255, 0.10)';
+        this.style.background = '#111';
+        this.style.borderColor = '#222';
         this.style.boxShadow = 'none';
       });
     });
@@ -374,24 +392,24 @@ class Attendance {
     const saveBtn = document.getElementById('saveEditBtn');
 
     cancelBtn.addEventListener('mouseenter', function() {
-      this.style.background = 'rgba(255, 255, 255, 0.08)';
-      this.style.borderColor = '#5B5DFF';
+      this.style.background = '#111';
+      this.style.borderColor = '#fff';
       this.style.transform = 'translateY(-1px)';
     });
     cancelBtn.addEventListener('mouseleave', function() {
-      this.style.background = 'rgba(255, 255, 255, 0.06)';
-      this.style.borderColor = 'rgba(255, 255, 255, 0.10)';
+      this.style.background = '#111';
+      this.style.borderColor = '#222';
       this.style.transform = 'translateY(0)';
     });
 
     saveBtn.addEventListener('mouseenter', function() {
       this.style.transform = 'translateY(-2px)';
-      this.style.boxShadow = '0 6px 30px rgba(255, 138, 61, 0.4)';
+      this.style.boxShadow = 'none';
       this.style.filter = 'brightness(1.1)';
     });
     saveBtn.addEventListener('mouseleave', function() {
       this.style.transform = 'translateY(0)';
-      this.style.boxShadow = '0 4px 20px rgba(255, 138, 61, 0.3)';
+      this.style.boxShadow = 'none';
       this.style.filter = 'brightness(1)';
     });
 
@@ -430,7 +448,7 @@ class Attendance {
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(7, 10, 18, 0.85);
+      background: rgba(0, 0, 0, 0.85);
       backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
@@ -456,18 +474,18 @@ class Attendance {
           }
         }
         .modal-select option {
-          background: #090B16;
-          color: #F3F6FF;
+          background: #000;
+          color: #fff;
           padding: 8px;
         }
         .modal-select option:hover {
-          background: rgba(91, 93, 255, 0.2);
+          background: #111;
         }
       </style>
       <div style="
-        background: rgba(255, 255, 255, 0.06);
+        background: #111;
         backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.10);
+        border: 1px solid #222;
         border-radius: 16px;
         padding: 32px;
         width: 90%;
@@ -479,8 +497,8 @@ class Attendance {
           margin-bottom: 24px;
           font-size: 1.75rem;
           font-weight: 700;
-          color: #F3F6FF;
-          background: linear-gradient(135deg, #FFB86B, #FF8A3D);
+          color: #fff;
+          background: #000;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -491,20 +509,20 @@ class Attendance {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: rgba(243, 246, 255, 0.70);
+            color: #999;
             font-size: 0.95rem;
           ">Select Employee:</label>
           <select id="employeeSelect" class="input modal-select" style="
             width: 100%;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-size: 1rem;
             transition: all 0.3s ease;
           ">
-            <option style="background: #090B16; color: #F3F6FF;">Loading employees...</option>
+            <option style="background: #000; color: #fff;">Loading employees...</option>
           </select>
         </div>
         
@@ -513,22 +531,22 @@ class Attendance {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: rgba(243, 246, 255, 0.70);
+            color: #999;
             font-size: 0.95rem;
           ">Status:</label>
           <select id="statusSelect" class="input modal-select" style="
             width: 100%;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-size: 1rem;
             transition: all 0.3s ease;
           ">
-            <option value="present" style="background: #090B16; color: #F3F6FF;">Present</option>
-            <option value="absent" style="background: #090B16; color: #F3F6FF;">Absent</option>
-            <option value="late" style="background: #090B16; color: #F3F6FF;">Late</option>
+            <option value="present" style="background: #000; color: #fff;">Present</option>
+            <option value="absent" style="background: #000; color: #fff;">Absent</option>
+            <option value="late" style="background: #000; color: #fff;">Late</option>
           </select>
         </div>
         
@@ -536,10 +554,10 @@ class Attendance {
           <button id="cancelRollCall" class="btn btn-secondary" style="
             flex: 1;
             padding: 12px 24px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -547,14 +565,14 @@ class Attendance {
           <button id="markRollCall" class="btn btn-primary" style="
             flex: 1;
             padding: 12px 24px;
-            background: linear-gradient(135deg, #FFB86B, #FF8A3D);
+            background: #000;
             border: none;
             border-radius: 12px;
-            color: #000;
+            color: #fff;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(255, 138, 61, 0.3);
+            box-shadow: none;
           ">Mark</button>
         </div>
       </div>
@@ -565,13 +583,13 @@ class Attendance {
     const inputs = modal.querySelectorAll('.input');
     inputs.forEach(input => {
       input.addEventListener('focus', function() {
-        this.style.background = 'rgba(255, 255, 255, 0.08)';
-        this.style.borderColor = '#5B5DFF';
-        this.style.boxShadow = '0 0 12px rgba(91, 93, 255, 0.2)';
+        this.style.background = '#111';
+        this.style.borderColor = '#fff';
+        this.style.boxShadow = '0 0 12px #111';
       });
       input.addEventListener('blur', function() {
-        this.style.background = 'rgba(255, 255, 255, 0.05)';
-        this.style.borderColor = 'rgba(255, 255, 255, 0.10)';
+        this.style.background = '#111';
+        this.style.borderColor = '#222';
         this.style.boxShadow = 'none';
       });
     });
@@ -580,24 +598,24 @@ class Attendance {
     const markBtn = document.getElementById('markRollCall');
 
     cancelBtn.addEventListener('mouseenter', function() {
-      this.style.background = 'rgba(255, 255, 255, 0.08)';
-      this.style.borderColor = '#5B5DFF';
+      this.style.background = '#111';
+      this.style.borderColor = '#fff';
       this.style.transform = 'translateY(-1px)';
     });
     cancelBtn.addEventListener('mouseleave', function() {
-      this.style.background = 'rgba(255, 255, 255, 0.06)';
-      this.style.borderColor = 'rgba(255, 255, 255, 0.10)';
+      this.style.background = '#111';
+      this.style.borderColor = '#222';
       this.style.transform = 'translateY(0)';
     });
 
     markBtn.addEventListener('mouseenter', function() {
       this.style.transform = 'translateY(-2px)';
-      this.style.boxShadow = '0 6px 30px rgba(255, 138, 61, 0.4)';
+      this.style.boxShadow = 'none';
       this.style.filter = 'brightness(1.1)';
     });
     markBtn.addEventListener('mouseleave', function() {
       this.style.transform = 'translateY(0)';
-      this.style.boxShadow = '0 4px 20px rgba(255, 138, 61, 0.3)';
+      this.style.boxShadow = 'none';
       this.style.filter = 'brightness(1)';
     });
 
@@ -608,17 +626,17 @@ class Attendance {
       const select = document.getElementById('employeeSelect');
       
       if (!employees || employees.length === 0) {
-        select.innerHTML = '<option style="background: #090B16; color: #F3F6FF;">No employees found</option>';
+        select.innerHTML = '<option style="background: #000; color: #fff;">No employees found</option>';
         return;
       }
       
       select.innerHTML = employees.map(e => 
-        `<option value="${e.id}" style="background: #090B16; color: #F3F6FF;">${e.name || e.employee_name || 'Unknown'}</option>`
+        `<option value="${e.id}" style="background: #000; color: #fff;">${e.name || e.employee_name || 'Unknown'}</option>`
       ).join('');
     }).catch(err => {
       console.error('Error loading employees:', err);
       const select = document.getElementById('employeeSelect');
-      select.innerHTML = '<option style="background: #090B16; color: #F3F6FF;">Error loading employees</option>';
+      select.innerHTML = '<option style="background: #000; color: #fff;">Error loading employees</option>';
     });
 
     // Cancel button handler
@@ -640,6 +658,7 @@ class Attendance {
       }
       
       const now = new Date();
+      const crewFilter = document.getElementById('crewFilter');
       const attendanceData = {
         employee_id: employeeId,
         employee_name: employeeName,
@@ -648,7 +667,8 @@ class Attendance {
         clock_in: status === 'absent' ? null : now.toTimeString().split(' ')[0].substring(0, 5),
         clock_out: null,
         hours: 0,
-        notes: ''
+        notes: '',
+        site_id: crewFilter ? crewFilter.value : ''
       };
       
       console.log('Marking attendance:', attendanceData);
@@ -675,7 +695,7 @@ class Attendance {
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(7, 10, 18, 0.85);
+      background: rgba(0, 0, 0, 0.85);
       backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
@@ -701,18 +721,18 @@ class Attendance {
           }
         }
         .modal-select option {
-          background: #090B16;
-          color: #F3F6FF;
+          background: #000;
+          color: #fff;
           padding: 8px;
         }
         .modal-select option:hover {
-          background: rgba(91, 93, 255, 0.2);
+          background: #111;
         }
       </style>
       <div style="
-        background: rgba(255, 255, 255, 0.06);
+        background: #111;
         backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.10);
+        border: 1px solid #222;
         border-radius: 16px;
         padding: 32px;
         width: 90%;
@@ -724,8 +744,8 @@ class Attendance {
           margin-bottom: 24px;
           font-size: 1.75rem;
           font-weight: 700;
-          color: #F3F6FF;
-          background: linear-gradient(135deg, #FFB86B, #FF8A3D);
+          color: #fff;
+          background: #000;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -736,20 +756,20 @@ class Attendance {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: rgba(243, 246, 255, 0.70);
+            color: #999;
             font-size: 0.95rem;
           ">Employee:</label>
           <select id="employeeClockSelect" class="input modal-select" style="
             width: 100%;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-size: 1rem;
             transition: all 0.3s ease;
           ">
-            <option style="background: #090B16; color: #F3F6FF;">Loading employees...</option>
+            <option style="background: #000; color: #fff;">Loading employees...</option>
           </select>
         </div>
         
@@ -758,16 +778,16 @@ class Attendance {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: rgba(243, 246, 255, 0.70);
+            color: #999;
             font-size: 0.95rem;
           ">Time:</label>
           <input type="time" id="clockTime" class="input" style="
             width: 100%;
             padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-size: 1rem;
             transition: all 0.3s ease;
             color-scheme: dark;
@@ -778,10 +798,10 @@ class Attendance {
           <button id="cancelClock" class="btn btn-secondary" style="
             flex: 1;
             padding: 12px 24px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #111;
+            border: 1px solid #222;
             border-radius: 12px;
-            color: #F3F6FF;
+            color: #fff;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -789,14 +809,14 @@ class Attendance {
           <button id="confirmClock" class="btn btn-primary" style="
             flex: 1;
             padding: 12px 24px;
-            background: linear-gradient(135deg, #FFB86B, #FF8A3D);
+            background: #000;
             border: none;
             border-radius: 12px;
-            color: #000;
+            color: #fff;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(255, 138, 61, 0.3);
+            box-shadow: none;
           ">Clock In</button>
         </div>
       </div>
@@ -807,13 +827,13 @@ class Attendance {
     const inputs = modal.querySelectorAll('.input');
     inputs.forEach(input => {
       input.addEventListener('focus', function() {
-        this.style.background = 'rgba(255, 255, 255, 0.08)';
-        this.style.borderColor = '#5B5DFF';
-        this.style.boxShadow = '0 0 12px rgba(91, 93, 255, 0.2)';
+        this.style.background = '#111';
+        this.style.borderColor = '#fff';
+        this.style.boxShadow = '0 0 12px #111';
       });
       input.addEventListener('blur', function() {
-        this.style.background = 'rgba(255, 255, 255, 0.05)';
-        this.style.borderColor = 'rgba(255, 255, 255, 0.10)';
+        this.style.background = '#111';
+        this.style.borderColor = '#222';
         this.style.boxShadow = 'none';
       });
     });
@@ -822,24 +842,24 @@ class Attendance {
     const confirmBtn = document.getElementById('confirmClock');
 
     cancelBtn.addEventListener('mouseenter', function() {
-      this.style.background = 'rgba(255, 255, 255, 0.08)';
-      this.style.borderColor = '#5B5DFF';
+      this.style.background = '#111';
+      this.style.borderColor = '#fff';
       this.style.transform = 'translateY(-1px)';
     });
     cancelBtn.addEventListener('mouseleave', function() {
-      this.style.background = 'rgba(255, 255, 255, 0.06)';
-      this.style.borderColor = 'rgba(255, 255, 255, 0.10)';
+      this.style.background = '#111';
+      this.style.borderColor = '#222';
       this.style.transform = 'translateY(0)';
     });
 
     confirmBtn.addEventListener('mouseenter', function() {
       this.style.transform = 'translateY(-2px)';
-      this.style.boxShadow = '0 6px 30px rgba(255, 138, 61, 0.4)';
+      this.style.boxShadow = 'none';
       this.style.filter = 'brightness(1.1)';
     });
     confirmBtn.addEventListener('mouseleave', function() {
       this.style.transform = 'translateY(0)';
-      this.style.boxShadow = '0 4px 20px rgba(255, 138, 61, 0.3)';
+      this.style.boxShadow = 'none';
       this.style.filter = 'brightness(1)';
     });
 
@@ -850,17 +870,17 @@ class Attendance {
       const select = document.getElementById('employeeClockSelect');
       
       if (!employees || employees.length === 0) {
-        select.innerHTML = '<option style="background: #090B16; color: #F3F6FF;">No employees found</option>';
+        select.innerHTML = '<option style="background: #000; color: #fff;">No employees found</option>';
         return;
       }
       
       select.innerHTML = employees.map(e => 
-        `<option value="${e.id}" style="background: #090B16; color: #F3F6FF;">${e.name || e.employee_name || 'Unknown'}</option>`
+        `<option value="${e.id}" style="background: #000; color: #fff;">${e.name || e.employee_name || 'Unknown'}</option>`
       ).join('');
     }).catch(err => {
       console.error('Error loading employees:', err);
       const select = document.getElementById('employeeClockSelect');
-      select.innerHTML = '<option style="background: #090B16; color: #F3F6FF;">Error loading employees</option>';
+      select.innerHTML = '<option style="background: #000; color: #fff;">Error loading employees</option>';
     });
 
     // Cancel button handler
@@ -889,7 +909,8 @@ class Attendance {
         clock_in: time,
         clock_out: null,
         hours: 0,
-        notes: ''
+        notes: '',
+        site_id: (document.getElementById('crewFilter') || {}).value || ''
       };
       
       console.log('Clocking in:', attendanceData);
@@ -925,3 +946,4 @@ if (document.readyState === 'loading') {
     console.error('window.db not found! Make sure your database is initialized first.');
   }
 }
+
