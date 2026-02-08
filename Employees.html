@@ -10,7 +10,16 @@
     <link rel="stylesheet" href="CSS/employees.css">
     <script src="JS%20files/db.js"></script>
 </head>
-<body>
+<body data-auth-check="on">
+    <div class="auth-overlay" id="authOverlay" aria-hidden="true">
+        <div class="auth-panel" role="status" aria-live="polite">
+            <div class="auth-orb"></div>
+            <div class="auth-title" id="authTitle">Authenticating</div>
+            <div class="auth-sub" id="authSubtitle">Verifying secure session with Supabase. Please wait.</div>
+            <div class="auth-bar"><span></span></div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="sidebar" id="sidebar">
             <div class="head">
@@ -40,10 +49,10 @@
                             <a href="attendance.html">
                                 <i class="icon ph ph-user"></i>
                                 <span class="text">Attendance</span>
-                            </a> 
+                            </a>
                         </li>
                         <li class="active">
-                            <a href="employees.html">
+                            <a href="Employees.html">
                                 <i class="icon ph ph-user-circle"></i>
                                 <span class="text">Employees</span>
                             </a>
@@ -60,12 +69,6 @@
                                 <span class="text">Reports</span>
                             </a>
                         </li>
-                    </ul>
-                </div>
-
-                <div class="menu">
-                    <p class="title">Settings</p>
-                    <ul>
                         <li>
                             <a href="settings.html">
                                 <i class="icon ph ph-gear"></i>
@@ -79,7 +82,8 @@
                     <p class="title">Account</p>
                     <ul>
                         <li>
-                            <a href="help.html">`n                                <i class="icon ph ph-info"></i>
+                            <a href="help.html">
+                                <i class="icon ph ph-info"></i>
                                 <span class="text">Help</span>
                             </a>
                         </li>
@@ -118,7 +122,7 @@
             </div>
 
             <div class="table-container">
-                <table class="employees-table">
+                <table class="table employees-table">
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -139,8 +143,8 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
-    <script src="JS%20files/sidebar.js"></script> 
+    <script src="JS%20files/sidebar.js"></script>
     <script src="JS%20files/employ.js"></script>
+    <script src="JS%20files/authOverlay.js"></script>
 </body>
 </html>
-

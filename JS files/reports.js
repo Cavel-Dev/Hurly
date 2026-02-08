@@ -285,10 +285,12 @@ class Reports {
 
     wrapper.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:18px;">
-        <div style="display:flex;gap:12px;align-items:center;">
-          <img src="Assets/image.png" alt="Logo" style="height:48px;width:auto;object-fit:contain;">
+        <div style="display:flex;gap:16px;align-items:center;">
           <div>
-            <div style="font-size:20px;font-weight:700;">Payroll Report</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="font-size:20px;font-weight:700;">Payroll Report</div>
+              <img src="Assets/image.png" alt="Logo" style="height:28px;width:auto;object-fit:contain;">
+            </div>
             <div style="font-size:12px;color:#444;">${this.escapeHtml(periodText)}</div>
           </div>
         </div>
@@ -396,7 +398,6 @@ class Reports {
     if (!start || !end) return 'All dates';
     return `${start.toLocaleDateString('en-US')} - ${end.toLocaleDateString('en-US')}`;
   }
-  }
 
   formatCurrency(value) {
     return new Intl.NumberFormat('en-JM', { style: 'currency', currency: 'JMD' }).format(value || 0);
@@ -431,8 +432,8 @@ class Reports {
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    if (window.db) new Reports();
+    new Reports();
   });
 } else {
-  if (window.db) new Reports();
+  new Reports();
 }

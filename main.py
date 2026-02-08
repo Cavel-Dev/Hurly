@@ -1,44 +1,40 @@
-import os
-
 import psycopg2
 from dotenv import load_dotenv
+import os
 
+# Load environment variables from .env
+load_dotenv()
 
-def main() -> None:
-    load_dotenv()
+# Fetch variables
+USER = os.getenv("postgres")
+PASSWORD = os.getenv("SOXvKo7B6lWeKTpw")
+HOST = os.getenv("db.ncqfvcymhvjcchrwelfg.supabase.co")
+PORT = os.getenv("5432")
+DBNAME = os.getenv("dpostgres")
 
-    database_url = os.getenv("DATABASE_URL")
-    user = os.getenv("DB_USER")
-    password = os.getenv("DB_PASSWORD")
-    host = os.getenv("DB_HOST")
-    port = os.getenv("DB_PORT")
-    dbname = os.getenv("DB_NAME")
+# Connect to the database
+try:
+    connection = psycopg2.connect(
+        user=USER,
+        password=PASSWORD,
+        host=HOST,
+        port=PORT,
+        dbname=DBNAME
+    )
+    print("Connection successful!")
+    
+    # Create a cursor to execute SQL queries
+    cursor = connection.cursor()
+    
+    # Example query
+    cursor.execute("SELECT NOW();")
+    result = cursor.fetchone()
+    print("Current Time:", result)
 
-    try:
-        if database_url:
-            connection = psycopg2.connect(database_url)
-        else:
-            connection = psycopg2.connect(
-                user=user,
-                password=password,
-                host=host,
-                port=port,
-                dbname=dbname,
-            )
+    # Close the cursor and connection
+    cursor.close()
+    connection.close()
+    print("Connection closed.")
 
-        print("Connection successful!")
-
-        cursor = connection.cursor()
-        cursor.execute("SELECT NOW();")
-        result = cursor.fetchone()
-        print("Current Time:", result)
-
-        cursor.close()
-        connection.close()
-        print("Connection closed.")
-    except Exception as exc:
-        print(f"Failed to connect: {exc}")
-
-
-if __name__ == "__main__":
-    main()
+except Exception as e:
+    print(f"Failed to connect: {e}")

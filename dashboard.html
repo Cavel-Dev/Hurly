@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,241 +7,18 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
     <link rel="stylesheet" href="CSS/style.css">
-    <style>
-        :root {
-            --dash-bg: #f6f7fb;
-            --dash-card: #ffffff;
-            --dash-text: #0b0f1a;
-            --dash-muted: #5f6b7a;
-            --dash-border: #e6e9f0;
-            --dash-accent: #0f172a;
-            --dash-success: #16a34a;
-            --dash-warning: #f59e0b;
-            --dash-danger: #ef4444;
-        }
-
-        .main-content {
-            background: var(--dash-bg);
-            color: var(--dash-text);
-        }
-
-        .dash-header {
-            display: flex;
-            align-items: flex-end;
-            justify-content: space-between;
-            gap: 24px;
-            margin-bottom: 28px;
-        }
-
-        .dash-title {
-            font-size: 32px;
-            font-weight: 700;
-            color: var(--dash-text);
-            letter-spacing: -0.5px;
-            margin-bottom: 6px;
-        }
-
-        .dash-subtitle {
-            color: var(--dash-muted);
-            font-size: 15px;
-        }
-
-        .date-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 14px;
-            border-radius: 999px;
-            background: #fff;
-            border: 1px solid var(--dash-border);
-            color: var(--dash-text);
-            font-size: 13px;
-            font-weight: 600;
-            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
-        }
-
-        .kpi-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 18px;
-            margin-bottom: 28px;
-        }
-
-        .kpi-card {
-            background: var(--dash-card);
-            border: 1px solid var(--dash-border);
-            border-radius: 16px;
-            padding: 18px 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-        }
-
-        .kpi-label {
-            color: var(--dash-muted);
-            font-size: 13px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-        }
-
-        .kpi-value {
-            font-size: 28px;
-            font-weight: 700;
-            color: var(--dash-text);
-        }
-
-        .kpi-meta {
-            font-size: 13px;
-            color: var(--dash-muted);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .kpi-tag {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            padding: 4px 8px;
-            border-radius: 999px;
-            background: #e8f5ed;
-            color: var(--dash-success);
-            font-weight: 600;
-        }
-
-        .section-grid {
-            display: grid;
-            grid-template-columns: repeat(12, minmax(0, 1fr));
-            gap: 18px;
-        }
-
-        .panel {
-            background: var(--dash-card);
-            border: 1px solid var(--dash-border);
-            border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-        }
-
-        .panel-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: var(--dash-text);
-            margin-bottom: 14px;
-        }
-
-        .panel-subtitle {
-            color: var(--dash-muted);
-            font-size: 13px;
-            margin-bottom: 16px;
-        }
-
-        .trend-bars {
-            display: grid;
-            grid-template-columns: repeat(7, minmax(0, 1fr));
-            gap: 8px;
-            align-items: flex-end;
-            height: 140px;
-        }
-
-        .trend-bar {
-            background: linear-gradient(180deg, #111827 0%, #334155 100%);
-            border-radius: 8px;
-            height: 40%;
-            position: relative;
-        }
-
-        .trend-bar span {
-            position: absolute;
-            bottom: -22px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 11px;
-            color: var(--dash-muted);
-        }
-
-        .snapshot-list {
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .snapshot-item {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 12px 14px;
-            border-radius: 12px;
-            background: #f9fafc;
-            border: 1px solid #edf0f6;
-        }
-
-        .snapshot-item strong {
-            color: var(--dash-text);
-        }
-
-        .snapshot-meta {
-            color: var(--dash-muted);
-            font-size: 12px;
-        }
-
-        .status-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            padding: 4px 10px;
-            border-radius: 999px;
-            font-weight: 600;
-        }
-
-        .status-success { background: #e8f5ed; color: var(--dash-success); }
-        .status-warning { background: #fff4e0; color: var(--dash-warning); }
-        .status-danger { background: #fdecea; color: var(--dash-danger); }
-
-        .progress-track {
-            height: 10px;
-            background: #edf0f6;
-            border-radius: 999px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #111827, #475569);
-            width: 40%;
-        }
-
-        @media (max-width: 1100px) {
-            .kpi-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-
-        @media (max-width: 900px) {
-            .section-grid {
-                grid-template-columns: repeat(1, minmax(0, 1fr));
-            }
-        }
-
-        @media (max-width: 700px) {
-            .kpi-grid {
-                grid-template-columns: repeat(1, minmax(0, 1fr));
-            }
-
-            .dash-header {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-        }
-    </style>
     <script src="JS%20files/db.js"></script>
 </head>
-<body>
+<body data-auth-check="on">
+    <div class="auth-overlay" id="authOverlay" aria-hidden="true">
+        <div class="auth-panel" role="status" aria-live="polite">
+            <div class="auth-orb"></div>
+            <div class="auth-title" id="authTitle">Authenticating</div>
+            <div class="auth-sub" id="authSubtitle">Verifying secure session with Supabase. Please wait.</div>
+            <div class="auth-bar"><span></span></div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="sidebar" id="sidebar">
             <div class="head">
@@ -272,7 +48,7 @@
                             <a href="attendance.html">
                                 <i class="icon ph ph-user"></i>
                                 <span class="text">Attendance</span>
-                            </a> 
+                            </a>
                         </li>
                         <li>
                             <a href="Employees.html">
@@ -292,14 +68,8 @@
                                 <span class="text">Reports</span>
                             </a>
                         </li>
-                    </ul>
-                </div>
-
-                <div class="menu">
-                    <p class="title">Settings</p>
-                    <ul>
                         <li>
-                            <a href="#">
+                            <a href="settings.html">
                                 <i class="icon ph ph-gear"></i>
                                 <span class="text">Settings</span>
                             </a>
@@ -311,7 +81,8 @@
                     <p class="title">Account</p>
                     <ul>
                         <li>
-                            <a href="help.html">`n                                <i class="icon ph ph-info"></i>
+                            <a href="help.html">
+                                <i class="icon ph ph-info"></i>
                                 <span class="text">Help</span>
                             </a>
                         </li>
@@ -327,14 +98,16 @@
         </div>
 
         <div class="main-content">
-            <div class="dash-header">
-                <div>
-                    <div class="dash-title" id="welcomeTitle">Welcome</div>
-                    <div class="dash-subtitle">A quick snapshot of your workforce, attendance, and payroll activity.</div>
+            <div class="page-header">
+                <div class="header-left">
+                    <h1 id="welcomeTitle">Welcome</h1>
+                    <p class="subtitle">A quick snapshot of your workforce, attendance, and payroll activity.</p>
                 </div>
-                <div class="date-pill" id="dashboardDate">
-                    <i class="ph ph-calendar"></i>
-                    <span>Loading date...</span>
+                <div class="header-right">
+                    <div class="date-pill" id="dashboardDate">
+                        <i class="ph ph-calendar"></i>
+                        <span>Loading date...</span>
+                    </div>
                 </div>
             </div>
 
@@ -385,7 +158,7 @@
             </div>
 
             <div class="section-grid">
-                <div class="panel" style="grid-column: span 7;">
+                <div class="panel span-7">
                     <div class="panel-title">Attendance Trend</div>
                     <div class="panel-subtitle">Last 7 days of attendance activity</div>
                     <div class="trend-bars" id="attendanceTrend">
@@ -398,10 +171,10 @@
                         <div class="trend-bar"><span>Sun</span></div>
                     </div>
                 </div>
-                <div class="panel" style="grid-column: span 5;">
+                <div class="panel span-5">
                     <div class="panel-title">Payroll Progress</div>
                     <div class="panel-subtitle">Current run estimate vs. last period</div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <div class="panel-row mb-12">
                         <div>
                             <strong id="payrollCurrentLabel">$0</strong>
                             <div class="snapshot-meta">Current estimate</div>
@@ -411,9 +184,9 @@
                     <div class="progress-track">
                         <div class="progress-fill" id="payrollProgress"></div>
                     </div>
-                    <div class="snapshot-meta" id="payrollFootnote" style="margin-top:12px;">No payroll data yet</div>
+                    <div class="snapshot-meta mt-12" id="payrollFootnote">No payroll data yet</div>
                 </div>
-                <div class="panel" style="grid-column: span 7;">
+                <div class="panel span-7">
                     <div class="panel-title">Recent Payroll Runs</div>
                     <div class="panel-subtitle">Latest payroll activity in JMD</div>
                     <ul class="snapshot-list" id="recentPayrollRuns">
@@ -426,7 +199,7 @@
                         </li>
                     </ul>
                 </div>
-                <div class="panel" style="grid-column: span 5;">
+                <div class="panel span-5">
                     <div class="panel-title">Operations Snapshot</div>
                     <div class="panel-subtitle">Key indicators to keep on your radar</div>
                     <ul class="snapshot-list" id="operationsSnapshot">
@@ -453,7 +226,7 @@
                         </li>
                     </ul>
                 </div>
-                <div class="panel" style="grid-column: span 7;">
+                <div class="panel span-7">
                     <div class="panel-title">Recent Activity</div>
                     <div class="panel-subtitle">Latest updates across your system</div>
                     <ul class="snapshot-list" id="recentActivity">
@@ -472,7 +245,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
     <script src="JS%20files/dash.js"></script>
-    <script src="JS%20files/sidebar.js"></script> 
+    <script src="JS%20files/sidebar.js"></script>
+    <script src="JS%20files/authOverlay.js"></script>
 </body>
 </html>
-

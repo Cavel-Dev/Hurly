@@ -8,9 +8,17 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
     <link rel="stylesheet" href="CSS/style.css">
     <script src="JS%20files/db.js"></script>
-    <script src="JS%20files/sidebar.js"></script>
 </head>
-<body>
+<body data-auth-check="on">
+<div class="auth-overlay" id="authOverlay" aria-hidden="true">
+    <div class="auth-panel" role="status" aria-live="polite">
+        <div class="auth-orb"></div>
+        <div class="auth-title" id="authTitle">Authenticating</div>
+        <div class="auth-sub" id="authSubtitle">Verifying secure session with Supabase. Please wait.</div>
+        <div class="auth-bar"><span></span></div>
+    </div>
+</div>
+
 <div class="container">
     <div class="sidebar" id="sidebar">
         <div class="head">
@@ -39,10 +47,10 @@
                         <a href="attendance.html">
                             <i class="icon ph ph-user"></i>
                             <span class="text">Attendance</span>
-                        </a> 
+                        </a>
                     </li>
                     <li>
-                        <a href="employees.html">
+                        <a href="Employees.html">
                             <i class="icon ph ph-user-circle"></i>
                             <span class="text">Employees</span>
                         </a>
@@ -59,11 +67,6 @@
                             <span class="text">Reports</span>
                         </a>
                     </li>
-                </ul>
-            </div>
-            <div class="menu">
-                <p class="title">Settings</p>
-                <ul>
                     <li>
                         <a href="settings.html">
                             <i class="icon ph ph-gear"></i>
@@ -76,7 +79,8 @@
                 <p class="title">Account</p>
                 <ul>
                     <li>
-                        <a href="help.html">`n                                <i class="icon ph ph-info"></i>
+                        <a href="help.html">
+                            <i class="icon ph ph-info"></i>
                             <span class="text">Help</span>
                         </a>
                     </li>
@@ -90,61 +94,64 @@
             </div>
         </div>
     </div>
-    <div class="main-content" style="background:#fff; color:#111; min-height:100vh; width:100%;">
-        <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;gap:24px;flex-wrap:wrap;">
-            <div style="flex:1;min-width:220px;">
-                <h1 style="color:#111;font-size:2.2rem;font-weight:700;letter-spacing:-1px;margin-bottom:6px;">Reports</h1>
-                <p style="color:#444;font-size:1.05rem;">Export payroll runs by date and share them with your payments team.</p>
+    <div class="main-content">
+        <div class="page-header">
+            <div class="header-left" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <img src="Assets/image.png" alt="Hurly Logo" style="width:44px;height:44px;object-fit:contain;filter:grayscale(100%);">
+                <div>
+                    <h1>Reports</h1>
+                    <p class="subtitle">Export payroll runs by date and share them with your payments team.</p>
+                </div>
             </div>
-            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-                <button class="btn btn-secondary" id="downloadPayrollBtn" onclick="window.__reportsInstance && window.__reportsInstance.downloadPayrollPdf()" style="background:#111;color:#fff;font-weight:600;border-radius:10px;padding:12px 18px;border:1px solid #111;">
+            <div class="action-row">
+                <button class="btn btn-primary" id="downloadPayrollBtn" onclick="window.__reportsInstance && window.__reportsInstance.downloadPayrollPdf()">
                     Download Payroll (PDF)
                 </button>
             </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:16px;margin-bottom:22px;">
-            <div style="background:#f5f5f5;border-radius:12px;padding:16px;">
-                <div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.6px;">Runs</div>
-                <div style="font-size:1.8rem;font-weight:700;" id="reportRunsCount">0</div>
+        <div class="card-grid-3 mb-24">
+            <div class="kpi-card">
+                <div class="kpi-label">Runs</div>
+                <div class="kpi-value" id="reportRunsCount">0</div>
             </div>
-            <div style="background:#f5f5f5;border-radius:12px;padding:16px;">
-                <div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.6px;">Total Paid</div>
-                <div style="font-size:1.8rem;font-weight:700;" id="reportTotalPaid">$0</div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total Paid</div>
+                <div class="kpi-value" id="reportTotalPaid">$0</div>
             </div>
-            <div style="background:#f5f5f5;border-radius:12px;padding:16px;">
-                <div style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:0.6px;">Total Pending</div>
-                <div style="font-size:1.8rem;font-weight:700;" id="reportTotalPending">$0</div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total Pending</div>
+                <div class="kpi-value" id="reportTotalPending">$0</div>
             </div>
         </div>
 
-        <div class="filters-bar" style="display:flex;gap:12px;align-items:center;margin-bottom:24px;flex-wrap:wrap;">
-            <input type="date" class="input" id="reportStartDate" style="background:#fff;color:#111;border:1px solid #bbb;border-radius:8px;padding:8px 12px;">
-            <span style="color:#888;display:flex;align-items:center;">to</span>
-            <input type="date" class="input" id="reportEndDate" style="background:#fff;color:#111;border:1px solid #bbb;border-radius:8px;padding:8px 12px;">
-            <button class="btn btn-secondary btn-sm" id="applyReportFilter" style="background:#fff;color:#111;font-weight:600;border-radius:8px;padding:8px 16px;border:1px solid #111;">Apply</button>
-            <button class="btn btn-secondary btn-sm" id="clearReportFilter" style="background:#fff;color:#111;font-weight:600;border-radius:8px;padding:8px 16px;border:1px solid #111;">Clear</button>
+        <div class="filters-bar mb-24">
+            <input type="date" class="input" id="reportStartDate">
+            <span class="inline-muted">to</span>
+            <input type="date" class="input" id="reportEndDate">
+            <button class="btn btn-secondary btn-sm" id="applyReportFilter">Apply</button>
+            <button class="btn btn-secondary btn-sm" id="clearReportFilter">Clear</button>
         </div>
 
-        <div class="panel" style="background:#f5f5f5;border-radius:14px;padding:0 0 18px 0;">
-            <div style="padding:18px 20px 8px 20px;">
-                <h2 style="color:#111;font-size:1.35rem;font-weight:700;margin:0;">Payroll Runs</h2>
-                <div style="color:#666;font-size:0.95rem;margin-top:6px;">Filtered by run date. Download button exports the same set.</div>
+        <div class="panel">
+            <div class="mb-12">
+                <h2 class="panel-title mb-6">Payroll Runs</h2>
+                <div class="panel-subtitle">Filtered by run date. Download button exports the same set.</div>
             </div>
-            <div style="padding:0 20px 18px 20px;">
-                <table class="table" style="margin:0;color:#111;width:100%;border-collapse:separate;border-spacing:0;">
+            <div class="table-wrap">
+                <table class="table">
                     <thead>
-                        <tr style="background:#eee;color:#111;">
-                            <th style="padding:10px 8px;text-align:left;">Pay Period</th>
-                            <th style="padding:10px 8px;text-align:left;">Employees</th>
-                            <th style="padding:10px 8px;text-align:left;">Total (JMD)</th>
-                            <th style="padding:10px 8px;text-align:left;">Status</th>
-                            <th style="padding:10px 8px;text-align:left;">Run Date</th>
+                        <tr>
+                            <th>Pay Period</th>
+                            <th>Employees</th>
+                            <th>Total (JMD)</th>
+                            <th>Status</th>
+                            <th>Run Date</th>
                         </tr>
                     </thead>
                     <tbody id="reportsPayrollBody">
                         <tr>
-                            <td colspan="5" style="padding:16px;text-align:center;color:#666;">No payroll runs found</td>
+                            <td colspan="5" class="no-data">No payroll runs found</td>
                         </tr>
                     </tbody>
                 </table>
@@ -155,6 +162,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="JS%20files/reports.js"></script>
+<script src="JS%20files/sidebar.js"></script>
+<script src="JS%20files/authOverlay.js"></script>
 <script>
     if (window.__reportsInstance && typeof window.__reportsInstance.loadRuns === 'function') {
         window.__reportsInstance.loadRuns();
@@ -165,15 +174,15 @@
             const tbody = document.getElementById('reportsPayrollBody');
             if (tbody) {
                 if (!runs.length) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;text-align:center;color:#666;">No payroll runs found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" class="no-data">No payroll runs found</td></tr>';
                 } else {
                     tbody.innerHTML = runs.map(run => `
                         <tr>
-                            <td style="padding:10px 8px;">${run.pay_period || 'N/A'}</td>
-                            <td style="padding:10px 8px;">${run.employees_count ?? 0}</td>
-                            <td style="padding:10px 8px;">${new Intl.NumberFormat('en-JM', { style: 'currency', currency: 'JMD' }).format(run.total || 0)}</td>
-                            <td style="padding:10px 8px;">${run.status || 'Pending'}</td>
-                            <td style="padding:10px 8px;">${run.created_at ? new Date(run.created_at).toLocaleDateString('en-US') : '-'}</td>
+                            <td>${run.pay_period || 'N/A'}</td>
+                            <td>${run.employees_count ?? 0}</td>
+                            <td>${new Intl.NumberFormat('en-JM', { style: 'currency', currency: 'JMD' }).format(run.total || 0)}</td>
+                            <td>${run.status || 'Pending'}</td>
+                            <td>${run.created_at ? new Date(run.created_at).toLocaleDateString('en-US') : '-'}</td>
                         </tr>
                     `).join('');
                 }
@@ -185,4 +194,3 @@
 </script>
 </body>
 </html>
-

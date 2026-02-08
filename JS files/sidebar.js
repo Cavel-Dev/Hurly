@@ -5,7 +5,7 @@ $(document).ready(function() {
     // Toggle sidebar collapse
     $('#toggleBtn').on('click', function() {
         $('#sidebar').toggleClass('collapsed');
-    });
+    }).attr('data-toggle-bound', 'true');
 
     // Handle active state on menu items
     $('.menu ul li a').on('click', function(e) {
@@ -174,6 +174,15 @@ $(document).ready(function() {
     });
 }
 
+// Safety net: ensure collapse toggle is always bound (event delegation)
+document.addEventListener('click', (event) => {
+    const toggle = event.target.closest('#toggleBtn');
+    if (!toggle) return;
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed');
+});
+
 // Enhanced App class with Supabase integration
 class App {
     constructor() {
@@ -182,7 +191,7 @@ class App {
             dashboard: 'dashboard.html',
             attendance: 'attendance.html',
             payroll: 'payroll.html',
-            employees: 'employees.html',
+            employees: 'Employees.html',
             reports: 'reports.html',
             settings: 'settings.html'
         };

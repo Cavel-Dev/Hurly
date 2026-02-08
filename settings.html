@@ -8,9 +8,17 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
     <link rel="stylesheet" href="CSS/style.css">
     <script src="JS%20files/db.js"></script>
-    <script src="JS%20files/sidebar.js"></script>
 </head>
-<body>
+<body data-auth-check="on">
+<div class="auth-overlay" id="authOverlay" aria-hidden="true">
+    <div class="auth-panel" role="status" aria-live="polite">
+        <div class="auth-orb"></div>
+        <div class="auth-title" id="authTitle">Authenticating</div>
+        <div class="auth-sub" id="authSubtitle">Verifying secure session with Supabase. Please wait.</div>
+        <div class="auth-bar"><span></span></div>
+    </div>
+</div>
+
 <div class="container">
     <div class="sidebar" id="sidebar">
         <div class="head">
@@ -39,10 +47,10 @@
                         <a href="attendance.html">
                             <i class="icon ph ph-user"></i>
                             <span class="text">Attendance</span>
-                        </a> 
+                        </a>
                     </li>
                     <li>
-                        <a href="employees.html">
+                        <a href="Employees.html">
                             <i class="icon ph ph-user-circle"></i>
                             <span class="text">Employees</span>
                         </a>
@@ -71,7 +79,8 @@
                 <p class="title">Account</p>
                 <ul>
                     <li>
-                        <a href="help.html">`n                                <i class="icon ph ph-info"></i>
+                        <a href="help.html">
+                            <i class="icon ph ph-info"></i>
                             <span class="text">Help</span>
                         </a>
                     </li>
@@ -85,78 +94,80 @@
             </div>
         </div>
     </div>
-    <div class="main-content" style="background:#fff; color:#111; min-height:100vh; width:100%;padding:40px 32px;">
-        <div class="page-header" style="margin-bottom:28px;">
-            <h1 style="color:#111;font-size:2.2rem;font-weight:700;letter-spacing:-1px;margin-bottom:6px;">Settings</h1>
-            <p style="color:#444;font-size:1.05rem;">Manage company profile, payroll defaults, and work sites.</p>
+    <div class="main-content">
+        <div class="page-header">
+            <div class="header-left">
+                <h1>Settings</h1>
+                <p class="subtitle">Manage company profile, payroll defaults, and work sites.</p>
+            </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px;">
-            <div style="grid-column:span 5;background:#f5f5f5;border-radius:14px;padding:20px;">
-                <h2 style="margin:0 0 14px 0;font-size:1.2rem;">Company Profile</h2>
-                <div style="display:grid;gap:12px;">
-                    <label style="font-weight:600;">Company Name</label>
-                    <input id="companyNameInput" type="text" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
-                    <label style="font-weight:600;">Contact Email</label>
-                    <input id="companyEmailInput" type="email" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
-                    <label style="font-weight:600;">Phone</label>
-                    <input id="companyPhoneInput" type="text" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
-                    <label style="font-weight:600;">Address</label>
-                    <textarea id="companyAddressInput" rows="3" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;"></textarea>
+        <div class="grid-12">
+            <div class="card span-5">
+                <h2 class="card-title">Company Profile</h2>
+                <div class="form-stack">
+                    <label>Company Name</label>
+                    <input id="companyNameInput" type="text">
+                    <label>Contact Email</label>
+                    <input id="companyEmailInput" type="email">
+                    <label>Phone</label>
+                    <input id="companyPhoneInput" type="text">
+                    <label>Address</label>
+                    <textarea id="companyAddressInput" rows="3"></textarea>
                 </div>
-                <button class="btn btn-secondary" id="saveCompanyBtn" style="margin-top:16px;background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Save Company</button>
+                <button class="btn btn-primary mt-16" id="saveCompanyBtn">Save Company</button>
             </div>
 
-            <div style="grid-column:span 7;background:#f5f5f5;border-radius:14px;padding:20px;">
-                <h2 style="margin:0 0 14px 0;font-size:1.2rem;">Payroll Defaults</h2>
-                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-                    <div style="display:grid;gap:8px;">
-                        <label style="font-weight:600;">Default Daily Rate (JMD)</label>
-                        <input id="defaultDailyRateInput" type="number" min="0" step="1" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
+            <div class="card span-7">
+                <h2 class="card-title">Payroll Defaults</h2>
+                <div class="form-grid">
+                    <div class="form-stack">
+                        <label>Default Daily Rate (JMD)</label>
+                        <input id="defaultDailyRateInput" type="number" min="0" step="1">
                     </div>
-                    <div style="display:grid;gap:8px;">
-                        <label style="font-weight:600;">Pay Period Type</label>
-                        <select id="payPeriodTypeInput" style="padding:10px;border:1px solid #bbb;border-radius:8px;background:#fff;">
+                    <div class="form-stack">
+                        <label>Pay Period Type</label>
+                        <select id="payPeriodTypeInput">
                             <option value="semi-monthly">Semi-monthly (1-15, 16-end)</option>
                             <option value="weekly">Weekly</option>
                             <option value="monthly">Monthly</option>
                         </select>
                     </div>
                 </div>
-                <button class="btn btn-secondary" id="savePayrollSettingsBtn" style="margin-top:16px;background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Save Payroll Settings</button>
+                <button class="btn btn-primary mt-16" id="savePayrollSettingsBtn">Save Payroll Settings</button>
             </div>
 
-            <div style="grid-column:span 12;background:#f5f5f5;border-radius:14px;padding:20px;">
-                <h2 style="margin:0 0 14px 0;font-size:1.2rem;">Backup & Restore</h2>
-                <p style="color:#444;margin:0 0 12px 0;">Export or import all local data (employees, attendance, payroll, sites, settings).</p>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-                    <button class="btn btn-secondary" id="backupDataBtn" style="background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Download Backup</button>
-                    <label class="btn btn-secondary" style="background:#fff;color:#111;border:1px solid #111;border-radius:10px;padding:10px 16px;cursor:pointer;">
+            <div class="card span-12">
+                <h2 class="card-title">Backup & Restore</h2>
+                <p class="subtitle mb-12">Export or import all local data (employees, attendance, payroll, sites, settings).</p>
+                <div class="action-row">
+                    <button class="btn btn-secondary" id="backupDataBtn">Download Backup</button>
+                    <label class="btn btn-outline">
                         Restore Backup
                         <input type="file" id="restoreDataInput" accept="application/json" style="display:none;">
                     </label>
                 </div>
             </div>
 
-            <div style="grid-column:span 12;background:#f5f5f5;border-radius:14px;padding:20px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-                    <h2 style="margin:0;font-size:1.2rem;">Work Sites</h2>
-                    <button class="btn btn-secondary" id="addSiteBtn" style="background:#111;color:#fff;border:1px solid #111;border-radius:10px;padding:10px 16px;">Add New Site</button>
+            <div class="card span-12">
+                <div class="panel-row mb-12">
+                    <h2 class="card-title">Work Sites</h2>
+                    <button class="btn btn-primary" id="addSiteBtn">Add New Site</button>
                 </div>
-                <div style="margin-top:14px;">
-                    <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;">
-                        <thead style="background:#eee;">
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
                             <tr>
-                                <th style="padding:10px;text-align:left;">Site</th>
-                                <th style="padding:10px;text-align:left;">Location</th>
-                                <th style="padding:10px;text-align:left;">Status</th>
-                                <th style="padding:10px;text-align:left;">Workers</th>
-                                <th style="padding:10px;text-align:left;">Actions</th>
+                                <th>Site</th>
+                                <th>Location</th>
+                                <th>Status</th>
+                                <th>Workers</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="sitesTableBody">
                             <tr>
-                                <td colspan="5" style="padding:14px;text-align:center;color:#666;">No sites found</td>
+                                <td colspan="5" class="no-data">No sites found</td>
                             </tr>
                         </tbody>
                     </table>
@@ -167,44 +178,7 @@
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
 <script src="JS%20files/settings.js"></script>
+<script src="JS%20files/sidebar.js"></script>
+<script src="JS%20files/authOverlay.js"></script>
 </body>
 </html>
-
-<style>
-.settings-tab {
-    padding: 16px 24px;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-bottom: 3px solid transparent;
-    transition: var(--transition);
-}
-
-.settings-tab:hover {
-    color: var(--text-primary);
-}
-
-.settings-tab.active {
-    color: var(--accent-warm);
-    border-bottom-color: var(--accent-warm);
-}
-
-.settings-tab .material-icons {
-    font-size: 20px;
-}
-
-.settings-content {
-    animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-</style>
-

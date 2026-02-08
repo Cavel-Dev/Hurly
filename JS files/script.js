@@ -131,6 +131,7 @@ function showLoginSuccess(message) {
         e.preventDefault();
         const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
+        window.dispatchEvent(new CustomEvent('auth:loading', { detail: { state: 'start' } }));
         if (loginButton) {
             loginButton.disabled = true;
             loginButton.textContent = 'Logging in...';
@@ -139,6 +140,7 @@ function showLoginSuccess(message) {
             const user = await authenticate(email, password);
             if (!user) {
                 alert('Login failed: invalid email or password.');
+                window.dispatchEvent(new CustomEvent('auth:loading', { detail: { state: 'end' } }));
                 if (loginButton) {
                     loginButton.disabled = false;
                     loginButton.textContent = 'Log In';
@@ -159,6 +161,7 @@ function showLoginSuccess(message) {
             }, 900);
         } catch (err) {
             alert('Unexpected error: ' + err.message);
+            window.dispatchEvent(new CustomEvent('auth:loading', { detail: { state: 'end' } }));
             if (loginButton) {
                 loginButton.disabled = false;
                 loginButton.textContent = 'Log In';
