@@ -31,32 +31,150 @@ $(document).ready(function() {
     // Update every second
     setInterval(updateDateTime, 1000);
     
-    // Set today's date as default in date filter
-    const today = new Date().toISOString().split('T')[0];
-    $('#dateFilter').val(today);
+    // Set today's date as default in date filter only if no saved filter exists
+    try {
+        const saved = localStorage.getItem('huly_attendance_filters');
+        if (!saved && !$('#dateFilter').val()) {
+            const today = new Date().toISOString().split('T')[0];
+            $('#dateFilter').val(today);
+        }
+    } catch (e) {
+        const today = new Date().toISOString().split('T')[0];
+        $('#dateFilter').val(today);
+    }
 });
+
+function notify(message, type = 'info') {
+    if (window.app && typeof window.app.showToast === 'function') {
+        window.app.showToast(message, type);
+    } else {
+        alert(message);
+    }
+}
 class Attendance {
   constructor() {
     this.db = window.db;
+    this.attendanceCache = [];
+    this.realtimeChannel = null;
+    this.filtersKey = 'huly_attendance_filters';
     this.init();
   }
   
-  init() {
+  async init() {
     this.setupEventListeners();
-    this.loadAttendanceData();
+    await this.ensureConnected();
+    await this.loadAttendanceData(true);
+    this.initRealtime();
   }
 
-  async loadAttendanceData() {
+  async loadAttendanceData(withOverlay = false) {
     try {
+      if (withOverlay) this.showLoading('Loading attendance...');
       const dateInput = document.getElementById('dateFilter');
+      const allDates = Boolean(document.getElementById('attendanceAllDates')?.checked);
       const date = dateInput?.value || new Date().toISOString().split('T')[0];
+      this.saveFilters({ date, allDates });
       
-      let attendance = await this.db.getAttendance({ date });
+      let attendance = allDates
+        ? await this.db.getAttendance({})
+        : await this.db.getAttendance({ date });
       
-      this.populateAttendanceTable(attendance);
+      this.attendanceCache = attendance || [];
+      this.updateDayBadge(allDates ? null : date);
+      this.applySearchFilter();
+      if (withOverlay) this.hideLoading();
     } catch (error) {
       console.error('Error loading attendance:', error);
+      if (withOverlay) this.hideLoading();
     }
+  }
+
+  async ensureConnected() {
+    try {
+      if (this.db && typeof this.db.checkSupabaseConnection === 'function') {
+        this.showLoading('Connecting to Supabase...');
+        await this.db.checkSupabaseConnection();
+      }
+    } catch (e) {
+      console.warn('Supabase connection check failed', e);
+    } finally {
+      this.hideLoading();
+    }
+  }
+
+  showLoading(message) {
+    if (window.AuthOverlay && typeof window.AuthOverlay.show === 'function') {
+      window.AuthOverlay.show('Loading', message || 'Please wait...');
+    }
+  }
+
+  hideLoading() {
+    if (window.AuthOverlay && typeof window.AuthOverlay.hide === 'function') {
+      window.AuthOverlay.hide();
+    }
+  }
+
+  readFilters() {
+    try {
+      const raw = localStorage.getItem(this.filtersKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  saveFilters(filters) {
+    try {
+      localStorage.setItem(this.filtersKey, JSON.stringify(filters));
+    } catch (e) {}
+  }
+
+  updateDayBadge(dateValue) {
+    const badge = document.getElementById('attendanceDayBadge');
+    if (!badge) return;
+    if (!dateValue) {
+      badge.textContent = 'Date: All';
+      return;
+    }
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) {
+      badge.textContent = 'Date: --';
+      return;
+    }
+    const label = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+    badge.textContent = `Date: ${label}`;
+  }
+
+  applySearchFilter() {
+    const input = document.getElementById('attendanceSearch');
+    const term = input?.value?.toLowerCase().trim() || '';
+    if (!term) {
+      this.populateAttendanceTable(this.attendanceCache);
+      return;
+    }
+    const filtered = (this.attendanceCache || []).filter((row) => {
+      const name = String(row.employee_name || '').toLowerCase();
+      return name.includes(term);
+    });
+    this.populateAttendanceTable(filtered);
+  }
+
+  initRealtime() {
+    if (!this.db || typeof this.db.getSupabase !== 'function' || !this.db.supabaseHealthy) return;
+    this.db.getSupabase().then((sb) => {
+      if (!sb || this.realtimeChannel) return;
+      let timer = null;
+      this.realtimeChannel = sb
+        .channel('rt-attendance')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => this.loadAttendanceData(), 300);
+        })
+        .subscribe();
+      window.addEventListener('beforeunload', () => {
+        if (this.realtimeChannel) sb.removeChannel(this.realtimeChannel);
+      });
+    });
   }
 
   populateAttendanceTable(attendance) {
@@ -73,7 +191,7 @@ class Attendance {
     attendance.forEach(record => {
       const row = document.createElement('tr');
       const statusBadgeClass = record.status === 'present' ? 'badge-success' : record.status === 'absent' ? 'badge-danger' : 'badge-warning';
-      const statusIcon = record.status === 'present' ? 'check_circle' : record.status === 'absent' ? 'cancel' : 'schedule';
+      const statusIcon = record.status === 'present' ? 'ph-check-circle' : record.status === 'absent' ? 'ph-x-circle' : 'ph-clock';
       const statusText = record.status === 'present' ? 'Present' : record.status === 'absent' ? 'Absent' : 'Late';
       
       row.innerHTML = `
@@ -81,7 +199,7 @@ class Attendance {
           <input type="checkbox" class="attn-select" data-id="${record.id}">
         </td>
         <td>${record.employee_name || 'N/A'}</td>
-        <td><span class="badge ${statusBadgeClass}"><span class="material-icons">${statusIcon}</span>${statusText}</span></td>
+        <td><span class="badge ${statusBadgeClass}"><i class="ph ${statusIcon}"></i>${statusText}</span></td>
         <td>${record.clock_in || '-'}</td>
         <td>${record.clock_out || '-'}</td>
         <td>${record.hours || '0'}</td>
@@ -99,9 +217,16 @@ class Attendance {
     const deleteBtn = document.getElementById('deleteAttendanceBtn');
     const dateFilter = document.getElementById('dateFilter');
     const crewFilter = document.getElementById('crewFilter');
+    const searchInput = document.getElementById('attendanceSearch');
+    const allDatesToggle = document.getElementById('attendanceAllDates');
     
     if (dateFilter) {
-      dateFilter.valueAsDate = new Date();
+      const saved = this.readFilters();
+      if (saved?.date) {
+        dateFilter.value = saved.date;
+      } else {
+        dateFilter.valueAsDate = new Date();
+      }
       dateFilter.addEventListener('change', () => this.loadAttendanceData());
     }
     
@@ -133,6 +258,16 @@ class Attendance {
       crewFilter.addEventListener('change', () => this.loadAttendanceData());
     }
 
+    if (searchInput) {
+      searchInput.addEventListener('input', () => this.applySearchFilter());
+    }
+
+    if (allDatesToggle) {
+      const saved = this.readFilters();
+      allDatesToggle.checked = Boolean(saved?.allDates);
+      allDatesToggle.addEventListener('change', () => this.loadAttendanceData());
+    }
+
     if (deleteBtn) {
       deleteBtn.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -140,7 +275,7 @@ class Attendance {
           .map((el) => el.getAttribute('data-id'))
           .filter(Boolean);
         if (selected.length === 0) {
-          alert('Select at least one record to delete.');
+          notify('Select at least one record to delete.', 'warn');
           return;
         }
         if (!confirm(`Delete ${selected.length} attendance record(s)?`)) return;
@@ -151,7 +286,7 @@ class Attendance {
           await this.loadAttendanceData();
         } catch (err) {
           console.error('Error deleting attendance:', err);
-          alert('Failed to delete attendance. Please try again.');
+          notify('Failed to delete attendance. Please try again.', 'error');
         }
       });
     }
@@ -549,6 +684,16 @@ class Attendance {
             <option value="late" style="background: #000; color: #fff;">Late</option>
           </select>
         </div>
+
+        <div style="margin: 18px 0; display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" id="overtimeToggle" style="width:18px;height:18px;">
+          <label for="overtimeToggle" style="color:#bbb; font-size:0.95rem;">Log overtime (allow duplicate for same day)</label>
+        </div>
+
+        <div style="margin: 18px 0; display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" id="clockOvertimeToggle" style="width:18px;height:18px;">
+          <label for="clockOvertimeToggle" style="color:#bbb; font-size:0.95rem;">Log overtime (allow duplicate for same day)</label>
+        </div>
         
         <div style="display: flex; gap: 12px; margin-top: 24px">
           <button id="cancelRollCall" class="btn btn-secondary" style="
@@ -650,24 +795,39 @@ class Attendance {
       const employeeId = employeeSelect.value;
       const employeeName = employeeSelect.options[employeeSelect.selectedIndex].text;
       const status = document.getElementById('statusSelect').value;
+      const overtime = Boolean(document.getElementById('overtimeToggle')?.checked);
       
       // Don't proceed if no valid employee selected
       if (!employeeId || employeeName === 'Loading employees...' || employeeName === 'No employees found' || employeeName === 'Error loading employees') {
-        alert('Please select a valid employee');
+        notify('Please select a valid employee', 'warn');
         return;
       }
       
-      const now = new Date();
+      const dateInput = document.getElementById('dateFilter');
+      const selectedDate = dateInput?.value || new Date().toISOString().split('T')[0];
+      const now = new Date(`${selectedDate}T00:00:00`);
       const crewFilter = document.getElementById('crewFilter');
+
+      try {
+        const existing = await self.db.getAttendance({ date: selectedDate });
+        const already = (existing || []).some((r) => String(r.employee_id) === String(employeeId));
+        if (already && !overtime) {
+          notify('Attendance already recorded for this employee on this date. Use overtime to add another entry.', 'warn');
+          return;
+        }
+      } catch (e) {
+        console.warn('Attendance duplicate check failed', e);
+      }
+
       const attendanceData = {
         employee_id: employeeId,
         employee_name: employeeName,
         status: status,
-        date: now.toISOString().split('T')[0],
-        clock_in: status === 'absent' ? null : now.toTimeString().split(' ')[0].substring(0, 5),
+        date: selectedDate,
+        clock_in: null,
         clock_out: null,
-        hours: 0,
-        notes: '',
+        hours: 8,
+        notes: overtime ? 'Overtime entry' : '',
         site_id: crewFilter ? crewFilter.value : ''
       };
       
@@ -681,7 +841,7 @@ class Attendance {
         if (window.app && typeof window.app.showToast === 'function') window.app.showToast('Attendance marked', 'success');
       } catch (err) {
         console.error('Error marking attendance:', err);
-        alert('Failed to mark attendance. Please try again.');
+        notify('Failed to mark attendance. Please try again.', 'error');
       }
     });
   }
@@ -894,22 +1054,37 @@ class Attendance {
       const employeeId = employeeSelect.value;
       const employeeName = employeeSelect.options[employeeSelect.selectedIndex].text;
       const time = document.getElementById('clockTime').value;
+      const overtime = Boolean(document.getElementById('clockOvertimeToggle')?.checked);
       
       // Don't proceed if no valid employee selected
       if (!employeeId || employeeName === 'Loading employees...' || employeeName === 'No employees found' || employeeName === 'Error loading employees') {
-        alert('Please select a valid employee');
+        notify('Please select a valid employee', 'warn');
         return;
       }
       
+      const dateInput = document.getElementById('dateFilter');
+      const selectedDate = dateInput?.value || new Date().toISOString().split('T')[0];
+
+      try {
+        const existing = await self.db.getAttendance({ date: selectedDate });
+        const already = (existing || []).some((r) => String(r.employee_id) === String(employeeId));
+        if (already && !overtime) {
+          notify('Attendance already recorded for this employee on this date. Use overtime to add another entry.', 'warn');
+          return;
+        }
+      } catch (e) {
+        console.warn('Attendance duplicate check failed', e);
+      }
+
       const attendanceData = {
         employee_id: employeeId,
         employee_name: employeeName,
         status: 'present',
-        date: new Date().toISOString().split('T')[0],
-        clock_in: time,
+        date: selectedDate,
+        clock_in: time || null,
         clock_out: null,
-        hours: 0,
-        notes: '',
+        hours: time ? 0 : 8,
+        notes: overtime ? 'Overtime entry' : '',
         site_id: (document.getElementById('crewFilter') || {}).value || ''
       };
       
@@ -922,7 +1097,7 @@ class Attendance {
         self.loadAttendanceData();
       } catch (err) {
         console.error('Error clocking in:', err);
-        alert('Failed to clock in. Please try again.');
+        notify('Failed to clock in. Please try again.', 'error');
       }
     });
   }

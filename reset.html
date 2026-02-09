@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Password • Hurly</title>
+    <link rel="stylesheet" href="CSS/style.css">
+    <link rel="stylesheet" href="CSS/login.css">
+</head>
+<body data-auth-check="off" data-page="reset">
+    <div class="cursor-hover" id="cursorHover"></div>
+
+    <div class="container">
+        <div class="login-card">
+            <div class="logo">
+                <img src="Assets/image.png" alt="Logo">
+            </div>
+
+            <h1>Reset your password</h1>
+
+            <p class="helper-text" id="resetStatus">
+                Enter your email, password, and authenticator code to reset your password.
+            </p>
+
+            <form id="newPasswordForm">
+                <div class="form-group">
+                    <label for="resetEmail">Email</label>
+                    <input type="email" id="resetEmail" placeholder="name@work-email.com" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="resetPassword">Current password</label>
+                    <input type="password" id="resetPassword" placeholder="Enter your current password" autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label for="resetMfaCode">Authenticator code</label>
+                    <input type="text" id="resetMfaCode" placeholder="123 456" inputmode="numeric" autocomplete="one-time-code">
+                </div>
+                <div class="form-group">
+                    <label for="newPassword">New password</label>
+                    <input type="password" id="newPassword" placeholder="Create a strong password" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm new password</label>
+                    <input type="password" id="confirmPassword" placeholder="Confirm your password" autocomplete="new-password">
+                </div>
+                <button type="submit" class="login-button">Update password</button>
+            </form>
+
+            <div class="footer">
+                <a href="login.html">Back to sign in</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="JS%20files/reset.js"></script>
+</body>
+</html>

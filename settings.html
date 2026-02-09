@@ -133,8 +133,24 @@
                             <option value="monthly">Monthly</option>
                         </select>
                     </div>
+                    <div class="form-stack">
+                        <label>Overtime Threshold (Hours)</label>
+                        <input id="overtimeThresholdInput" type="number" min="0" step="0.25" placeholder="8">
+                    </div>
+                    <div class="form-stack">
+                        <label>Overtime Multiplier</label>
+                        <input id="overtimeMultiplierInput" type="number" min="1" step="0.1" placeholder="1.5">
+                    </div>
                 </div>
                 <button class="btn btn-primary mt-16" id="savePayrollSettingsBtn">Save Payroll Settings</button>
+            </div>
+
+            <div class="card span-12">
+                <h2 class="card-title">Security</h2>
+                <p class="subtitle mb-12">Enable Google Authenticator for MFA. You will be asked for a code at every login.</p>
+                <div class="action-row">
+                    <button class="btn btn-primary" id="enableMfaBtn">Enable Security (MFA)</button>
+                </div>
             </div>
 
             <div class="card span-12">
@@ -146,6 +162,14 @@
                         Restore Backup
                         <input type="file" id="restoreDataInput" accept="application/json" style="display:none;">
                     </label>
+                </div>
+            </div>
+
+            <div class="card span-12 danger-card">
+                <h2 class="card-title">Danger Zone</h2>
+                <p class="subtitle mb-12">Delete all data from this app (employees, attendance, payroll, sites, settings). This cannot be undone.</p>
+                <div class="action-row">
+                    <button class="btn btn-danger" id="resetAllDataBtn">Delete All Data</button>
                 </div>
             </div>
 
@@ -173,6 +197,35 @@
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="mfaModal" style="display:none;" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="mfaModalTitle">
+        <div class="modal-header">
+            <div>
+                <div class="modal-sub">Security Check</div>
+                <h3 class="modal-title" id="mfaModalTitle">Enable Multi-Factor Authentication</h3>
+            </div>
+            <button class="btn btn-outline btn-sm" id="mfaCloseBtn">Close</button>
+        </div>
+        <div class="modal-body">
+            <div class="modal-section" id="mfaQrWrap" style="display:none;">
+                <div class="modal-section-title">Scan with Google Authenticator</div>
+                <img id="mfaQr" alt="MFA QR Code" style="width:180px;height:180px;border-radius:14px;background:#fff;padding:8px;">
+                <div class="modal-sub" id="mfaSecret"></div>
+            </div>
+            <div class="modal-section">
+                <label for="mfaCode">Authenticator code</label>
+                <input id="mfaCode" type="text" placeholder="123 456" inputmode="numeric" autocomplete="one-time-code">
+                <div class="modal-sub" id="mfaHelpText">Open Google Authenticator, scan the QR code, then enter the 6-digit code.</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" id="mfaCancelBtn">Cancel</button>
+            <button class="btn btn-secondary" id="mfaReenrollBtn">Re-enroll</button>
+            <button class="btn btn-primary" id="mfaVerifyBtn">Verify</button>
         </div>
     </div>
 </div>

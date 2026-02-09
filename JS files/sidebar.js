@@ -55,6 +55,36 @@ $(document).ready(function() {
 
     // Role guard temporarily disabled to stop forced redirects
 
+    function loadSupabaseClient() {
+        return new Promise((resolve) => {
+            if (window.__supabaseClient) {
+                resolve(window.__supabaseClient);
+                return;
+            }
+            if (window.supabase && window.supabase.createClient) {
+                const SUPABASE_URL = "https://ncqfvcymhvjcchrwelfg.supabase.co";
+                const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcWZ2Y3ltaHZqY2NocndlbGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTg2NjksImV4cCI6MjA4NTk5NDY2OX0.93kN-rWGI8q5kd3YSdwJZfsCpACuaI2m38JU-Sxnp8I";
+                window.__supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                resolve(window.__supabaseClient);
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js';
+            script.onload = () => {
+                if (window.supabase && window.supabase.createClient) {
+                    const SUPABASE_URL = "https://ncqfvcymhvjcchrwelfg.supabase.co";
+                    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcWZ2Y3ltaHZqY2NocndlbGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTg2NjksImV4cCI6MjA4NTk5NDY2OX0.93kN-rWGI8q5kd3YSdwJZfsCpACuaI2m38JU-Sxnp8I";
+                    window.__supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    resolve(window.__supabaseClient);
+                } else {
+                    resolve(null);
+                }
+            };
+            script.onerror = () => resolve(null);
+            document.head.appendChild(script);
+        });
+    }
+
     $('#logoutBtn').on('click', async function(e) {
         e.preventDefault();
         const existing = document.getElementById('logoutToast');
@@ -86,8 +116,13 @@ $(document).ready(function() {
             toast.style.opacity = '1';
         });
 
-        setTimeout(() => {
+        setTimeout(async () => {
             try {
+                const supabase = await loadSupabaseClient();
+                if (supabase) {
+                    const { error } = await supabase.auth.signOut();
+                    if (error) console.warn('Supabase signOut error:', error);
+                }
                 const auditRaw = localStorage.getItem('huly_audit');
                 const audit = auditRaw ? JSON.parse(auditRaw) : [];
                 const session = JSON.parse(localStorage.getItem('huly_session') || 'null');
@@ -183,6 +218,88 @@ document.addEventListener('click', (event) => {
     sidebar.classList.toggle('collapsed');
 });
 
+// Client error reporting (to Supabase Edge Function)
+if (!window.__hurlyErrorReporting) {
+    window.__hurlyErrorReporting = true;
+    const getFunctionsBase = () => {
+        try {
+            const url = window.SUPABASE_URL || 'https://ncqfvcymhvjcchrwelfg.supabase.co';
+            const host = new URL(url).host;
+            const ref = host.split('.')[0];
+            return `https://${ref}.functions.supabase.co`;
+        } catch (e) {
+            return null;
+        }
+    };
+
+    const sendClientError = async (payload) => {
+        const base = getFunctionsBase();
+        if (!base) return;
+        const now = Date.now();
+        if (window.__hurlyLastError && now - window.__hurlyLastError < 30000) return;
+        window.__hurlyLastError = now;
+        try {
+            await fetch(`${base}/notify`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${window.SUPABASE_ANON_KEY || ''}`
+                },
+                body: JSON.stringify({
+                    event: 'client_error',
+                    message: payload.message || 'Unknown error',
+                    stack: payload.stack || '',
+                    url: payload.url || window.location.href
+                })
+            });
+        } catch (e) {}
+    };
+
+    window.addEventListener('error', (event) => {
+        sendClientError({
+            message: event.message,
+            stack: event.error?.stack || '',
+            url: window.location.href
+        });
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+        sendClientError({
+            message: event.reason?.message || String(event.reason || 'Unhandled rejection'),
+            stack: event.reason?.stack || '',
+            url: window.location.href
+        });
+    });
+}
+
+// Global toast helper
+if (!window.app) window.app = {};
+if (!window.app.showToast) {
+    window.app.showToast = (message, type = 'info') => {
+        const existing = document.querySelector('.toast-container');
+        const container = existing || (() => {
+            const c = document.createElement('div');
+            c.className = 'toast-container';
+            document.body.appendChild(c);
+            return c;
+        })();
+
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 200);
+        }, 2500);
+    };
+}
+
 // Enhanced App class with Supabase integration
 class App {
     constructor() {
@@ -218,7 +335,8 @@ class App {
                 script.onload = () => {
                     const SUPABASE_URL = "https://ncqfvcymhvjcchrwelfg.supabase.co";
                     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcWZ2Y3ltaHZqY2NocndlbGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTg2NjksImV4cCI6MjA4NTk5NDY2OX0.93kN-rWGI8q5kd3YSdwJZfsCpACuaI2m38JU-Sxnp8I";
-                    this.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    this.supabase = window.__supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    window.__supabaseClient = this.supabase;
                     resolve();
                 };
                 script.onerror = reject;
@@ -227,7 +345,8 @@ class App {
         } else {
             const SUPABASE_URL = "https://ncqfvcymhvjcchrwelfg.supabase.co";
             const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcWZ2Y3ltaHZqY2NocndlbGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTg2NjksImV4cCI6MjA4NTk5NDY2OX0.93kN-rWGI8q5kd3YSdwJZfsCpACuaI2m38JU-Sxnp8I";
-            this.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            this.supabase = window.__supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            window.__supabaseClient = this.supabase;
         }
     }
     

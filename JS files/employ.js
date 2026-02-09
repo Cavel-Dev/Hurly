@@ -1,14 +1,28 @@
 console.log('[DEBUG] employ.js loaded');
 
-const SUPABASE_URL = "https://ncqfvcymhvjcchrwelfg.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcWZ2Y3ltaHZqY2NocndlbGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTg2NjksImV4cCI6MjA4NTk5NDY2OX0.93kN-rWGI8q5kd3YSdwJZfsCpACuaI2m38JU-Sxnp8I";
+function notify(message, type = 'info') {
+  if (window.app && typeof window.app.showToast === 'function') {
+    window.app.showToast(message, type);
+  } else {
+    alert(message);
+  }
+}
+
+const SB_URL = window.SUPABASE_URL || "https://ncqfvcymhvjcchrwelfg.supabase.co";
+const SB_KEY = window.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jcWZ2Y3ltaHZqY2NocndlbGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MTg2NjksImV4cCI6MjA4NTk5NDY2OX0.93kN-rWGI8q5kd3YSdwJZfsCpACuaI2m38JU-Sxnp8I";
 
 let supabaseClient = null;
 
 function loadSupabase() {
   return new Promise((resolve) => {
+    if (window.__supabaseClient) {
+      supabaseClient = window.__supabaseClient;
+      resolve(supabaseClient);
+      return;
+    }
     if (window.supabase && window.supabase.createClient) {
-      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      supabaseClient = window.supabase.createClient(SB_URL, SB_KEY);
+      window.__supabaseClient = supabaseClient;
       resolve(supabaseClient);
       return;
     }
@@ -17,7 +31,8 @@ function loadSupabase() {
     script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js';
     script.onload = () => {
       if (window.supabase && window.supabase.createClient) {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabaseClient = window.supabase.createClient(SB_URL, SB_KEY);
+        window.__supabaseClient = supabaseClient;
         resolve(supabaseClient);
       } else {
         resolve(null);
@@ -33,12 +48,14 @@ class Employees {
     this.supabase = null;
     this.db = window.db || null;
     this.employeeCache = [];
+    this.realtimeChannel = null;
     this.init();
   }
 
   async init() {
     this.setupEventListeners();
     await this.loadEmployees();
+    this.initRealtime();
     this.startDateTime();
   }
 
@@ -98,6 +115,24 @@ class Employees {
       console.error('Error loading employees:', error);
       this.populateEmployeesTable([]);
     }
+  }
+
+  initRealtime() {
+    if (!this.db || typeof this.db.getSupabase !== 'function' || !this.db.supabaseHealthy) return;
+    this.db.getSupabase().then((sb) => {
+      if (!sb || this.realtimeChannel) return;
+      let timer = null;
+      this.realtimeChannel = sb
+        .channel('rt-employees')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => this.loadEmployees(), 300);
+        })
+        .subscribe();
+      window.addEventListener('beforeunload', () => {
+        if (this.realtimeChannel) sb.removeChannel(this.realtimeChannel);
+      });
+    });
   }
 
   populateEmployeesTable(employees) {
@@ -218,56 +253,50 @@ class Employees {
 
     const modal = document.createElement('div');
     modal.id = 'employeeModal';
-    modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-    `;
+    modal.className = 'modal-overlay';
 
     modal.innerHTML = `
-      <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:500px;box-shadow:0 8px 30px rgba(0,0,0,0.3);">
-        <h2 style="margin-bottom:16px;">${this.escapeHtml(title)}</h2>
-        <div style="margin:12px 0">
-          <label style="display:block;margin-bottom:6px;">Full Name *</label>
-          <input type="text" id="empName" value="${this.escapeHtml(employee.name || '')}" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;">
+      <div class="modal-card" style="max-width:560px;">
+        <div class="modal-header">
+          <h2 class="modal-title">${this.escapeHtml(title)}</h2>
+          <button class="icon-btn" id="employeeCloseBtn" aria-label="Close">x</button>
         </div>
-        <div style="margin:12px 0">
-          <label style="display:block;margin-bottom:6px;">Position *</label>
-          <input type="text" id="empPosition" value="${this.escapeHtml(employee.position || '')}" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;">
+        <div class="modal-body">
+          <div class="form-stack">
+            <label>Full Name *</label>
+            <input type="text" id="empName" value="${this.escapeHtml(employee.name || '')}">
+          </div>
+          <div class="form-stack">
+            <label>Position *</label>
+            <input type="text" id="empPosition" value="${this.escapeHtml(employee.position || '')}">
+          </div>
+          <div class="form-stack">
+            <label>Email *</label>
+            <input type="email" id="empEmail" value="${this.escapeHtml(employee.email || '')}">
+          </div>
+          <div class="form-stack">
+            <label>Phone</label>
+            <input type="tel" id="empPhone" value="${this.escapeHtml(employee.phone || '')}">
+          </div>
+          <div class="form-stack">
+            <label>Status</label>
+            <select id="empStatus">
+              <option value="Active" ${employee.status === 'Active' ? 'selected' : ''}>Active</option>
+              <option value="Inactive" ${employee.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
+            </select>
+          </div>
+          <div class="form-stack">
+            <label>Document Status</label>
+            <select id="empDocStatus">
+              <option value="Pending" ${employee.document_status === 'Pending' ? 'selected' : ''}>Pending</option>
+              <option value="Complete" ${employee.document_status === 'Complete' ? 'selected' : ''}>Complete</option>
+              <option value="In Progress" ${employee.document_status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+            </select>
+          </div>
         </div>
-        <div style="margin:12px 0">
-          <label style="display:block;margin-bottom:6px;">Email *</label>
-          <input type="email" id="empEmail" value="${this.escapeHtml(employee.email || '')}" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;">
-        </div>
-        <div style="margin:12px 0">
-          <label style="display:block;margin-bottom:6px;">Phone</label>
-          <input type="tel" id="empPhone" value="${this.escapeHtml(employee.phone || '')}" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;">
-        </div>
-        <div style="margin:12px 0">
-          <label style="display:block;margin-bottom:6px;">Status</label>
-          <select id="empStatus" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;">
-            <option value="Active" ${employee.status === 'Active' ? 'selected' : ''}>Active</option>
-            <option value="Inactive" ${employee.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
-          </select>
-        </div>
-        <div style="margin:12px 0">
-          <label style="display:block;margin-bottom:6px;">Document Status</label>
-          <select id="empDocStatus" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;">
-            <option value="Pending" ${employee.document_status === 'Pending' ? 'selected' : ''}>Pending</option>
-            <option value="Complete" ${employee.document_status === 'Complete' ? 'selected' : ''}>Complete</option>
-            <option value="In Progress" ${employee.document_status === 'In Progress' ? 'selected' : ''}>In Progress</option>
-          </select>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:16px;">
-          <button id="modalCancel" style="flex:1;padding:10px;border:1px solid #999;background:#fff;border-radius:8px;">Cancel</button>
-          <button id="modalSave" style="flex:1;padding:10px;border:0;background:#111;color:#fff;border-radius:8px;">${this.escapeHtml(actionText)}</button>
+        <div class="modal-footer">
+          <button id="modalCancel" class="btn btn-outline">Cancel</button>
+          <button id="modalSave" class="btn btn-primary">${this.escapeHtml(actionText)}</button>
         </div>
       </div>
     `;
@@ -279,6 +308,8 @@ class Employees {
       if (e.target === modal) close();
     });
     document.getElementById('modalCancel').addEventListener('click', close);
+    const closeBtn = document.getElementById('employeeCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', close);
 
     document.getElementById('modalSave').addEventListener('click', async () => {
       const name = document.getElementById('empName').value.trim();
@@ -289,13 +320,13 @@ class Employees {
       const documentStatus = document.getElementById('empDocStatus').value;
 
       if (!name || !position || !email) {
-        alert('Please fill in required fields: Name, Position, Email');
+        notify('Please fill in required fields: Name, Position, Email', 'warn');
         return;
       }
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        alert('Please enter a valid email address');
+        notify('Please enter a valid email address', 'warn');
         return;
       }
 
@@ -310,7 +341,7 @@ class Employees {
         });
       } catch (error) {
         console.error('Error saving employee:', error);
-        alert('Failed to save employee. Please try again.');
+        notify('Failed to save employee. Please try again.', 'error');
         return;
       }
 
@@ -360,7 +391,7 @@ class Employees {
       }
     } catch (error) {
       console.error('Error deleting employee:', error);
-      alert('Failed to delete employee. Please try again.');
+      notify('Failed to delete employee. Please try again.', 'error');
     }
   }
 

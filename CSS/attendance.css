@@ -3,6 +3,23 @@
     border-collapse: collapse;
 }
 
+.attendance-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.attendance-logo {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    object-fit: contain;
+    filter: grayscale(100%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 6px;
+}
+
 @media (max-width: 768px) {
     .table-container {
         overflow-x: auto;
@@ -10,5 +27,10 @@
 
     .attendance-table {
         min-width: 820px;
+    }
+
+    .attendance-header {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }

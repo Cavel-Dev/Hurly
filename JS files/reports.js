@@ -1,4 +1,12 @@
 console.log('[DEBUG] reports.js loaded');
+
+function notify(message, type = 'info') {
+  if (window.app && typeof window.app.showToast === 'function') {
+    window.app.showToast(message, type);
+  } else {
+    alert(message);
+  }
+}
 window.__reportsLoaded = true;
 
 class Reports {
@@ -21,6 +29,7 @@ class Reports {
     const applyBtn = document.getElementById('applyReportFilter');
     const clearBtn = document.getElementById('clearReportFilter');
     const downloadBtn = document.getElementById('downloadPayrollBtn');
+    const sendBtn = document.getElementById('sendPayrollReportBtn');
 
     if (applyBtn) {
       applyBtn.addEventListener('click', (e) => {
@@ -45,6 +54,13 @@ class Reports {
         e.preventDefault();
         this.downloadPayrollPdf();
       };
+    }
+
+    if (sendBtn) {
+      sendBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.sendPayrollReport();
+      });
     }
   }
 
@@ -220,7 +236,7 @@ class Reports {
     if (totalPending) totalPending.textContent = this.formatCurrency(pending);
   }
 
-  downloadPayrollPdf() {
+  async downloadPayrollPdf() {
     if (typeof html2pdf === 'undefined') {
       this.printReportPdf();
       return;
@@ -238,9 +254,154 @@ class Reports {
     };
 
     document.body.appendChild(reportEl);
-    html2pdf().set(options).from(reportEl).save().then(() => {
+    try {
+      const worker = html2pdf().set(options).from(reportEl);
+      await worker.save();
+      await this.uploadAndNotifyReport(worker, `payroll-report-${stamp}.pdf`);
+    } finally {
       reportEl.remove();
-    });
+    }
+  }
+
+  async sendPayrollReport() {
+    if (typeof html2pdf === 'undefined') {
+      notify('PDF generator not available.', 'error');
+      return;
+    }
+    const reportEl = this.buildReportElement();
+    const stamp = new Date().toISOString().split('T')[0];
+    const options = {
+      margin: [10, 10, 12, 10],
+      filename: `payroll-report-${stamp}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    document.body.appendChild(reportEl);
+    try {
+      const worker = html2pdf().set(options).from(reportEl);
+      await this.uploadAndNotifyReport(worker, `payroll-report-${stamp}.pdf`, true);
+    } finally {
+      reportEl.remove();
+    }
+  }
+
+  async uploadAndNotifyReport(worker, fileName, skipDownload = false) {
+    try {
+      const sb = await this.getSupabaseClient();
+      if (!sb) {
+        notify('Supabase not available for upload.', 'error');
+        return;
+      }
+      const blob = await this.workerToBlob(worker);
+      if (!blob) {
+        notify('Could not generate PDF for upload.', 'error');
+        return;
+      }
+      const bucket = 'payroll-reports';
+      const path = `reports/${Date.now()}-${fileName}`;
+      const upload = await sb.storage.from(bucket).upload(path, blob, {
+        contentType: 'application/pdf',
+        upsert: false
+      });
+      if (upload.error) {
+        notify('Upload failed: ' + upload.error.message, 'error');
+        return;
+      }
+      const signed = await sb.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 7);
+      if (signed.error || !signed.data?.signedUrl) {
+        notify('Could not create report link.', 'error');
+        return;
+      }
+
+      const recipients = await this.getReportRecipients(sb);
+      if (!recipients.length) {
+        notify('Add at least one email to send the report.', 'warn');
+        return;
+      }
+
+      const base = this.getFunctionsBase();
+      if (!base) {
+        notify('Functions endpoint not available.', 'error');
+        return;
+      }
+
+      const body = {
+        event: 'payroll_report',
+        to: recipients,
+        report_url: signed.data.signedUrl,
+        period: this.getFilterLabel(),
+        total_paid: this.formatCurrency(this.getTotals().paid),
+        total_pending: this.formatCurrency(this.getTotals().pending)
+      };
+
+      const res = await fetch(`${base}/notify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${window.SUPABASE_ANON_KEY || ''}`,
+          'apikey': window.SUPABASE_ANON_KEY || ''
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        notify(text || 'Failed to email report.', 'error');
+        return;
+      }
+      notify('Report uploaded and emailed.', 'success');
+    } catch (err) {
+      notify('Report upload failed: ' + (err.message || err), 'error');
+    }
+  }
+
+  async workerToBlob(worker) {
+    if (!worker) return null;
+    try {
+      if (typeof worker.outputPdf === 'function') {
+        return await worker.outputPdf('blob');
+      }
+      if (typeof worker.output === 'function') {
+        return await worker.output('blob');
+      }
+    } catch (e) {
+      console.warn('PDF output failed', e);
+    }
+    return null;
+  }
+
+  async getSupabaseClient() {
+    try {
+      if (this.db?.supabase) return this.db.supabase;
+      if (this.db?.supabaseReady) return await this.db.supabaseReady;
+      if (window.__supabaseClient) return window.__supabaseClient;
+    } catch (e) {
+      return null;
+    }
+    return null;
+  }
+
+  getFunctionsBase() {
+    try {
+      const url = window.SUPABASE_URL || 'https://ncqfvcymhvjcchrwelfg.supabase.co';
+      const origin = new URL(url).origin;
+      return `${origin}/functions/v1`;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async getReportRecipients(sb) {
+    const input = document.getElementById('reportEmailRecipients');
+    const raw = input ? input.value : '';
+    const list = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const { data } = await sb.auth.getUser();
+    const own = data?.user?.email ? [data.user.email] : [];
+    const merged = Array.from(new Set([...own, ...list]));
+    return merged;
   }
 
   printReportPdf() {
@@ -256,7 +417,7 @@ class Reports {
 
     const doc = iframe.contentWindow?.document;
     if (!doc) {
-      alert('Unable to open print preview.');
+      notify('Unable to open print preview.', 'error');
       iframe.remove();
       return;
     }

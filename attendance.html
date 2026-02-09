@@ -100,9 +100,12 @@
 
         <div class="main-content">
             <div class="page-header">
-                <div class="header-left">
-                    <h1>Attendance</h1>
-                    <p class="subtitle">Manage daily worker attendance and check-ins</p>
+                <div class="header-left attendance-header">
+                    <img class="attendance-logo" src="Assets/image.png" alt="Logo">
+                    <div>
+                        <h1>Attendance</h1>
+                        <p class="subtitle">Manage daily worker attendance and check-ins</p>
+                    </div>
                 </div>
                 <div class="header-right">
                     <div class="datetime-display">
@@ -132,6 +135,12 @@
                     </button>
                 </div>
                 <div class="filters">
+                    <div class="pill" id="attendanceDayBadge">Date: --</div>
+                    <input type="text" class="input" id="attendanceSearch" placeholder="Search worker...">
+                    <label class="pill" style="cursor:pointer;">
+                        <input type="checkbox" id="attendanceAllDates" style="margin-right:8px;">
+                        All dates
+                    </label>
                     <input type="date" class="date-input" id="dateFilter">
                     <select class="select-input" id="crewFilter">
                         <option>All Crews</option>

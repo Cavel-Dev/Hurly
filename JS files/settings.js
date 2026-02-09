@@ -1,7 +1,16 @@
+function notify(message, type = 'info') {
+  if (window.app && typeof window.app.showToast === 'function') {
+    window.app.showToast(message, type);
+  } else {
+    alert(message);
+  }
+}
+
 class Settings {
   constructor() {
     this.db = window.db;
     this.settingsKey = 'huly_settings';
+    this.realtimeChannel = null;
     this.init();
   }
 
@@ -10,6 +19,8 @@ class Settings {
     this.loadPayrollSettings();
     this.bindSettingsActions();
     this.loadSites();
+    this.initRealtime();
+    this.showMfaSetupNotice();
   }
 
   bindSettingsActions() {
@@ -17,11 +28,25 @@ class Settings {
     const savePayrollBtn = document.getElementById('savePayrollSettingsBtn');
     const backupBtn = document.getElementById('backupDataBtn');
     const restoreInput = document.getElementById('restoreDataInput');
+    const resetBtn = document.getElementById('resetAllDataBtn');
+    const enableMfaBtn = document.getElementById('enableMfaBtn');
     if (saveCompanyBtn) saveCompanyBtn.addEventListener('click', () => this.saveCompanySettings());
     if (savePayrollBtn) savePayrollBtn.addEventListener('click', () => this.savePayrollSettings());
     if (backupBtn) backupBtn.addEventListener('click', () => this.downloadBackup());
     if (restoreInput) restoreInput.addEventListener('change', (e) => this.restoreBackup(e));
+    if (resetBtn) resetBtn.addEventListener('click', () => this.resetAllData());
+    if (enableMfaBtn) enableMfaBtn.addEventListener('click', () => this.enableMfa());
     this.setupAddSiteButton();
+  }
+
+  showMfaSetupNotice() {
+    const pending = localStorage.getItem('huly_mfa_setup_pending');
+    if (!pending) return;
+    localStorage.removeItem('huly_mfa_setup_pending');
+    if (window.AuthOverlay && typeof window.AuthOverlay.hide === 'function') {
+      window.AuthOverlay.hide();
+    }
+    notify('Security setup required: enable MFA to continue using the app.', 'warn');
   }
 
   async loadSites() {
@@ -31,6 +56,24 @@ class Settings {
     } catch (error) {
       console.error('Error loading sites:', error);
     }
+  }
+
+  initRealtime() {
+    if (!this.db || typeof this.db.getSupabase !== 'function' || !this.db.supabaseHealthy) return;
+    this.db.getSupabase().then((sb) => {
+      if (!sb || this.realtimeChannel) return;
+      let timer = null;
+      this.realtimeChannel = sb
+        .channel('rt-sites')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => this.loadSites(), 300);
+        })
+        .subscribe();
+      window.addEventListener('beforeunload', () => {
+        if (this.realtimeChannel) sb.removeChannel(this.realtimeChannel);
+      });
+    });
   }
 
   populateSitesTable(sites) {
@@ -127,7 +170,7 @@ class Settings {
       const status = document.getElementById('siteStatus').value;
 
       if (!name || !location) {
-        alert('Please fill in all fields');
+        notify('Please fill in all fields', 'warn');
         return;
       }
 
@@ -136,7 +179,7 @@ class Settings {
         modal.remove();
         await self.loadSites();
       } catch (error) {
-        alert('Error adding site: ' + error.message);
+        notify('Error adding site: ' + error.message, 'error');
       }
     });
   }
@@ -182,7 +225,7 @@ class Settings {
       const status = document.getElementById('siteStatus').value;
 
       if (!name || !location) {
-        alert('Please fill in all fields');
+        notify('Please fill in all fields', 'warn');
         return;
       }
 
@@ -191,7 +234,7 @@ class Settings {
         modal.remove();
         await self.loadSites();
       } catch (error) {
-        alert('Error updating site: ' + error.message);
+        notify('Error updating site: ' + error.message, 'error');
       }
     });
   }
@@ -223,7 +266,7 @@ class Settings {
     const data = this.readSettings();
     data.company = { name, email, phone, address };
     localStorage.setItem(this.settingsKey, JSON.stringify(data));
-    alert('Company settings saved.');
+    notify('Company settings saved.', 'success');
   }
 
   loadPayrollSettings() {
@@ -231,17 +274,28 @@ class Settings {
     const payroll = data.payroll || {};
     const rate = document.getElementById('defaultDailyRateInput');
     const period = document.getElementById('payPeriodTypeInput');
+    const threshold = document.getElementById('overtimeThresholdInput');
+    const multiplier = document.getElementById('overtimeMultiplierInput');
     if (rate) rate.value = payroll.defaultDailyRate ?? 5000;
     if (period) period.value = payroll.payPeriodType || 'semi-monthly';
+    if (threshold) threshold.value = payroll.overtimeThreshold ?? 8;
+    if (multiplier) multiplier.value = payroll.overtimeMultiplier ?? 1.5;
   }
 
   savePayrollSettings() {
     const rate = parseFloat(document.getElementById('defaultDailyRateInput')?.value || '0') || 0;
     const period = document.getElementById('payPeriodTypeInput')?.value || 'semi-monthly';
+    const threshold = parseFloat(document.getElementById('overtimeThresholdInput')?.value || '0') || 0;
+    const multiplier = parseFloat(document.getElementById('overtimeMultiplierInput')?.value || '0') || 0;
     const data = this.readSettings();
-    data.payroll = { defaultDailyRate: rate, payPeriodType: period };
+    data.payroll = {
+      defaultDailyRate: rate,
+      payPeriodType: period,
+      overtimeThreshold: threshold,
+      overtimeMultiplier: multiplier
+    };
     localStorage.setItem(this.settingsKey, JSON.stringify(data));
-    alert('Payroll settings saved.');
+    notify('Payroll settings saved.', 'success');
   }
 
   readSettings() {
@@ -286,13 +340,50 @@ class Settings {
           if (key === 'huly_session') return;
           localStorage.setItem(key, data[key]);
         });
-        alert('Backup restored. Please refresh the page.');
+        notify('Backup restored. Please refresh the page.', 'success');
       } catch (e) {
-        alert('Invalid backup file.');
+        notify('Invalid backup file.', 'error');
       }
     };
     reader.readAsText(file);
     event.target.value = '';
+  }
+
+  async resetAllData() {
+    const first = confirm('This will permanently delete ALL data (employees, attendance, payroll, sites, settings). Continue?');
+    if (!first) return;
+    const second = confirm('Are you absolutely sure? This cannot be undone.');
+    if (!second) return;
+
+    try {
+      if (this.db && typeof this.db.getSupabase === 'function' && this.db.supabaseHealthy) {
+        const sb = await this.db.getSupabase();
+        if (sb) {
+          const tables = ['attendance', 'payroll', 'employees', 'sites'];
+          for (const table of tables) {
+            await sb.from(table).delete().neq('id', '');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase delete failed (continuing with local reset):', e);
+    }
+
+    try {
+      const keep = ['huly_session'];
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('huly_') && !keep.includes(key)) {
+          keys.push(key);
+        }
+      }
+      keys.forEach((key) => localStorage.removeItem(key));
+      notify('All data deleted. The app will reload.', 'success');
+      window.location.reload();
+    } catch (e) {
+      notify('Reset failed: ' + e.message, 'error');
+    }
   }
 
   escapeHtml(value) {
@@ -302,6 +393,132 @@ class Settings {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  async enableMfa() {
+    if (!this.db || typeof this.db.getSupabase !== 'function' || !this.db.supabaseHealthy) {
+      notify('Supabase is not connected. Try again.', 'error');
+      return;
+    }
+
+    const sb = await this.db.getSupabase();
+    if (!sb) {
+      notify('Supabase client not available.', 'error');
+      return;
+    }
+
+    try {
+      const { data: factorsData, error: factorsError } = await sb.auth.mfa.listFactors();
+      if (factorsError) throw factorsError;
+
+      const totpFactors = factorsData?.totp || [];
+      const verifiedTotp = totpFactors.filter((f) => f.status === 'verified');
+      if (verifiedTotp.length) {
+        notify('MFA is already enabled for this account.', 'success');
+        return;
+      }
+
+      const existing = totpFactors.find((f) => f.status !== 'verified');
+      if (existing?.id) {
+        this.openMfaModal({ factorId: existing.id, qr: null, secret: '', supabase: sb });
+        return;
+      }
+
+      const { data: enrollData, error: enrollError } = await sb.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: 'Hurly Authenticator'
+      });
+      if (enrollError) throw enrollError;
+
+      const factorId = enrollData?.id;
+      const qr = enrollData?.totp?.qr_code || enrollData?.totp?.qrCode || null;
+      const secret = enrollData?.totp?.secret || '';
+      if (!factorId) throw new Error('MFA enrollment failed.');
+
+      this.openMfaModal({ factorId, qr, secret, supabase: sb });
+    } catch (e) {
+      notify('Unable to start MFA: ' + e.message, 'error');
+    }
+  }
+
+  openMfaModal({ factorId, qr, secret, supabase }) {
+    const modal = document.getElementById('mfaModal');
+    const qrWrap = document.getElementById('mfaQrWrap');
+    const qrImg = document.getElementById('mfaQr');
+    const secretEl = document.getElementById('mfaSecret');
+    const codeInput = document.getElementById('mfaCode');
+    const verifyBtn = document.getElementById('mfaVerifyBtn');
+    const reenrollBtn = document.getElementById('mfaReenrollBtn');
+    const closeBtn = document.getElementById('mfaCloseBtn');
+    const cancelBtn = document.getElementById('mfaCancelBtn');
+
+    if (!modal || !verifyBtn || !codeInput) return;
+
+    if (qrWrap && qrImg) {
+      if (qr) {
+        qrWrap.style.display = 'grid';
+        qrImg.src = qr;
+        if (secretEl) secretEl.textContent = secret || '';
+      } else {
+        qrWrap.style.display = 'none';
+      }
+    }
+
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+
+    const closeModal = () => {
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+      if (codeInput) codeInput.value = '';
+    };
+
+    const onVerify = async () => {
+      const code = String(codeInput.value || '').replace(/\s+/g, '');
+      if (!code) {
+        notify('Enter the 6-digit code.', 'warn');
+        return;
+      }
+      verifyBtn.disabled = true;
+      try {
+        const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({
+          factorId,
+          code
+        });
+        if (verifyError) {
+          notify('Invalid code. Try again.', 'error');
+          return;
+        }
+        notify('MFA enabled successfully.', 'success');
+        closeModal();
+      } catch (e) {
+        notify('MFA verification failed: ' + e.message, 'error');
+      } finally {
+        verifyBtn.disabled = false;
+      }
+    };
+
+    verifyBtn.onclick = onVerify;
+    if (reenrollBtn) {
+      reenrollBtn.onclick = async () => {
+        try {
+          const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+          if (factorsError) throw factorsError;
+          const totpFactors = factorsData?.totp || [];
+          const target = totpFactors.find((f) => f.friendly_name === 'Hurly Authenticator') || totpFactors[0];
+          if (target?.id) {
+            const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: target.id });
+            if (unenrollError) throw unenrollError;
+          }
+          closeModal();
+          this.enableMfa();
+        } catch (e) {
+          notify('Re-enroll failed: ' + e.message, 'error');
+        }
+      };
+    }
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
   }
 }
 
