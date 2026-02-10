@@ -58,8 +58,8 @@ body::before {
 }
 
 .login-logo {
-    width: 96px;
-    height: 96px;
+    width: 86px;
+    height: 86px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -69,8 +69,8 @@ body::before {
 }
 
 .login-logo img {
-    width: 54px;
-    height: 54px;
+    width: 42px;
+    height: 42px;
     filter: none;
 }
 
