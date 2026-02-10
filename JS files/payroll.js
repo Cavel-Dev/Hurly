@@ -864,6 +864,7 @@ class Payroll {
         const totalHours = entries.reduce((sum, e) => sum + (e.days || 0), 0);
         await this.createPayrollRun({
           pay_period: period,
+          site_id: localStorage.getItem('huly_active_site') || '',
           employees_count: selectedIds.length,
           total_hours: totalHours,
           total,

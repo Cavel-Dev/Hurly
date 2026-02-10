@@ -115,6 +115,14 @@ function auditLog(action, entity, details = {}) {
 
 window.audit = { log: auditLog };
 
+function getActiveSiteId() {
+  try {
+    return localStorage.getItem('huly_active_site') || '';
+  } catch (e) {
+    return '';
+  }
+}
+
 class DatabaseService {
   constructor() {
     this.storagePrefix = 'huly_';
@@ -126,6 +134,8 @@ class DatabaseService {
         console.log('Supabase client initialized');
         await this.checkSupabaseConnection();
         await this.migrateLocalToSupabase();
+        await this.syncAllTables();
+        await this.fixLegacySiteIds(getActiveSiteId());
       } else {
         console.warn('Supabase client unavailable, using Local Storage');
         setBadgeStatus('local');
@@ -306,17 +316,69 @@ class DatabaseService {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
 
+
+
+  async fixLegacySiteIds(activeSite) {
+    const target = activeSite || getActiveSiteId();
+    if (!target) return;
+    const legacyIds = ['All Crews', 'Crew A', 'Crew B', 'Crew C'];
+    try {
+      const sb = await this.getSupabase();
+      if (sb && this.supabaseHealthy) {
+        for (const legacy of legacyIds) {
+          await sb.from('attendance').update({ site_id: target }).eq('site_id', legacy);
+        }
+      }
+    } catch (e) {
+      console.warn('Legacy site_id fix failed', e);
+    }
+  }
+
+  async syncAllTables() {
+    const tables = ['sites', 'employees', 'attendance', 'payroll'];
+    for (const table of tables) {
+      await this.syncTable(table);
+    }
+  }
+
+  async syncTable(table) {
+    try {
+      const sb = await this.getSupabase();
+      if (!sb || !this.supabaseHealthy) return;
+      const { data, error } = await sb.from(table).select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      localStorage.setItem(this.storagePrefix + table, JSON.stringify(data || []));
+    } catch (e) {
+      console.warn(`Background sync failed for ${table}`, e);
+    }
+  }
+
+  getLocalTable(table) {
+    try {
+      const raw = localStorage.getItem(this.storagePrefix + table);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   // ============ SITES ============
+
   async getSites() {
     try {
+      const cached = this.getLocalTable('sites');
+      if (cached && cached.length) {
+        this.syncTable('sites');
+        return cached;
+      }
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
         const { data, error } = await sb.from('sites').select('*').order('created_at', { ascending: false });
         if (error) throw error;
+        localStorage.setItem(this.storagePrefix + 'sites', JSON.stringify(data || []));
         return data || [];
       }
-      const sites = localStorage.getItem(this.storagePrefix + 'sites');
-      return sites ? JSON.parse(sites) : [];
+      return cached || [];
     } catch (error) {
       console.error('Error fetching sites:', error);
       return [];
@@ -392,19 +454,32 @@ class DatabaseService {
   // ============ EMPLOYEES ============
   async getEmployees(siteId = null) {
     try {
+      const activeSite = siteId || getActiveSiteId();
+      const cached = this.getLocalTable('employees');
+      if (cached && cached.length) {
+        this.syncTable('employees');
+        if (activeSite) {
+          const filtered = cached.filter(e => !e.site_id || e.site_id === '' || e.site_id === activeSite);
+          if (filtered.some(e => !e.site_id || e.site_id === '') && localStorage.getItem('huly_default_site_confirmed') === 'true') {
+            this.backfillMissingSiteId(activeSite);
+          }
+          return filtered;
+        }
+        return cached;
+      }
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
         let query = sb.from('employees').select('*');
-        if (siteId) query = query.eq('site_id', siteId);
+        if (activeSite) {
+          query = query.or(`site_id.eq.${activeSite},site_id.is.null,site_id.eq.`);
+        }
         const { data, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
+        localStorage.setItem(this.storagePrefix + 'employees', JSON.stringify(data || []));
         return data || [];
       }
-      const employees = JSON.parse(localStorage.getItem(this.storagePrefix + 'employees') || '[]');
-      if (siteId) {
-        return employees.filter(e => e.site_id === siteId);
-      }
-      return employees;
+      if (activeSite) return cached.filter(e => !e.site_id || e.site_id === '' || e.site_id === activeSite);
+      return cached;
     } catch (error) {
       console.error('Error fetching employees:', error);
       return [];
@@ -480,22 +555,36 @@ class DatabaseService {
   // ============ ATTENDANCE ============
   async getAttendance(filters = {}) {
     try {
+      const activeSite = filters.siteId || getActiveSiteId();
+      const cached = this.getLocalTable('attendance');
+      if (cached && cached.length) {
+        this.syncTable('attendance');
+        let filtered = cached;
+        if (filters.date) filtered = filtered.filter(a => {
+          const d = a.date || a.Date || '';
+          return d === filters.date || d.startsWith(filters.date);
+        });
+        if (activeSite) {
+          filtered = filtered.filter(a => !a.site_id || a.site_id === '' || (a.site_id || a.Worksite) === activeSite);
+          if (filtered.some(a => !a.site_id || a.site_id === '') && localStorage.getItem('huly_default_site_confirmed') === 'true') {
+            this.backfillMissingSiteId(activeSite);
+          }
+        }
+        if (filters.employeeId) filtered = filtered.filter(a => String(a.employee_id || a.employee_ID) === String(filters.employeeId));
+        return filtered.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+      }
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
         let query = sb.from('attendance').select('*');
         if (filters.date) query = query.eq('date', filters.date);
-        if (filters.siteId) query = query.eq('site_id', filters.siteId);
+        if (activeSite) query = query.or(`site_id.eq.${activeSite},site_id.is.null,site_id.eq.`);
         if (filters.employeeId) query = query.eq('employee_id', String(filters.employeeId));
         const { data, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
+        localStorage.setItem(this.storagePrefix + 'attendance', JSON.stringify(data || []));
         return data || [];
       }
-      const attendance = JSON.parse(localStorage.getItem(this.storagePrefix + 'attendance') || '[]');
-      let filtered = attendance;
-      if (filters.date) filtered = filtered.filter(a => a.date === filters.date || a.Date === filters.date);
-      if (filters.siteId) filtered = filtered.filter(a => (a.site_id || a.Worksite) === filters.siteId);
-      if (filters.employeeId) filtered = filtered.filter(a => String(a.employee_id || a.employee_ID) === String(filters.employeeId));
-      return filtered.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
+      return [];
     } catch (error) {
       console.error('Error fetching attendance from Local Storage:', error);
       return [];
@@ -637,26 +726,31 @@ class DatabaseService {
   // ============ PAYROLL ============
   async getPayroll(filters = {}) {
     try {
+      const activeSite = filters.siteId || getActiveSiteId();
+      const cached = this.getLocalTable('payroll');
+      if (cached && cached.length) {
+        this.syncTable('payroll');
+        let filtered = cached;
+        if (filters.period) filtered = filtered.filter(p => p.pay_period === filters.period);
+        if (activeSite) {
+          filtered = filtered.filter(p => !p.site_id || p.site_id === '' || p.site_id === activeSite);
+          if (filtered.some(p => !p.site_id || p.site_id === '') && localStorage.getItem('huly_default_site_confirmed') === 'true') {
+            this.backfillMissingSiteId(activeSite);
+          }
+        }
+        return filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      }
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
         let query = sb.from('payroll').select('*');
         if (filters.period) query = query.eq('pay_period', filters.period);
-        if (filters.siteId) query = query.eq('site_id', filters.siteId);
+        if (activeSite) query = query.or(`site_id.eq.${activeSite},site_id.is.null,site_id.eq.`);
         const { data, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
+        localStorage.setItem(this.storagePrefix + 'payroll', JSON.stringify(data || []));
         return data || [];
       }
-      const payroll = JSON.parse(localStorage.getItem(this.storagePrefix + 'payroll') || '[]');
-      let filtered = payroll;
-
-      if (filters.period) {
-        filtered = filtered.filter(p => p.pay_period === filters.period);
-      }
-      if (filters.siteId) {
-        filtered = filtered.filter(p => p.site_id === filters.siteId);
-      }
-
-      return filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      return cached;
     } catch (error) {
       console.error('Error fetching payroll:', error);
       return [];
@@ -727,6 +821,118 @@ class DatabaseService {
       console.error('Error deleting payroll:', error);
       throw error;
     }
+  }
+
+  async backfillMissingSiteId(siteId = null) {
+    const targetSite = siteId || getActiveSiteId();
+    if (!targetSite) {
+      console.warn('No active site selected for backfill.');
+      return { updatedLocal: 0, updatedSupabase: 0 };
+    }
+
+    let updatedLocal = 0;
+    const tables = ['employees', 'attendance', 'payroll'];
+
+    try {
+      tables.forEach((key) => {
+        const raw = localStorage.getItem(this.storagePrefix + key);
+        if (!raw) return;
+        const rows = JSON.parse(raw) || [];
+        let changed = false;
+        rows.forEach((row) => {
+          if (!row.site_id) {
+            row.site_id = targetSite;
+            updatedLocal += 1;
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem(this.storagePrefix + key, JSON.stringify(rows));
+        }
+      });
+    } catch (e) {
+      console.warn('Local backfill failed', e);
+    }
+
+    let updatedSupabase = 0;
+    try {
+      const sb = await this.getSupabase();
+      if (sb && this.supabaseHealthy) {
+        for (const table of tables) {
+          // update null site_id
+          const resNull = await sb.from(table).update({ site_id: targetSite }).is('site_id', null);
+          if (!resNull.error) {
+            updatedSupabase += resNull.count || 0;
+          }
+          // update empty string site_id
+          const resEmpty = await sb.from(table).update({ site_id: targetSite }).eq('site_id', '');
+          if (!resEmpty.error) {
+            updatedSupabase += resEmpty.count || 0;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase backfill failed', e);
+    }
+
+    return { updatedLocal, updatedSupabase };
+  }
+
+  async consolidateToSite(siteId) {
+    const targetSite = siteId || getActiveSiteId();
+    if (!targetSite) {
+      console.warn('No target site for consolidation.');
+      return { updatedLocal: 0, updatedSupabase: 0 };
+    }
+
+    let updatedLocal = 0;
+    const tables = ['employees', 'attendance', 'payroll'];
+
+    try {
+      tables.forEach((key) => {
+        const raw = localStorage.getItem(this.storagePrefix + key);
+        if (!raw) return;
+        const rows = JSON.parse(raw) || [];
+        let changed = false;
+        rows.forEach((row) => {
+          if (row.site_id !== targetSite) {
+            row.site_id = targetSite;
+            updatedLocal += 1;
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem(this.storagePrefix + key, JSON.stringify(rows));
+        }
+      });
+
+      const sitesRaw = localStorage.getItem(this.storagePrefix + 'sites');
+      if (sitesRaw) {
+        const sites = JSON.parse(sitesRaw) || [];
+        const filtered = sites.filter((s) => String(s.id) === String(targetSite));
+        if (filtered.length) {
+          localStorage.setItem(this.storagePrefix + 'sites', JSON.stringify(filtered));
+        }
+      }
+    } catch (e) {
+      console.warn('Local consolidation failed', e);
+    }
+
+    let updatedSupabase = 0;
+    try {
+      const sb = await this.getSupabase();
+      if (sb && this.supabaseHealthy) {
+        for (const table of tables) {
+          const res = await sb.from(table).update({ site_id: targetSite });
+          if (!res.error) updatedSupabase += res.count || 0;
+        }
+        await sb.from('sites').delete().neq('id', targetSite);
+      }
+    } catch (e) {
+      console.warn('Supabase consolidation failed', e);
+    }
+
+    return { updatedLocal, updatedSupabase };
   }
 }
 

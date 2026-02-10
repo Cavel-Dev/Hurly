@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings - Hurly</title>
+    <link rel="icon" type="image/png" href="Assets/image.png">
+    <link rel="apple-touch-icon" href="Assets/image.png">
+
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
     <link rel="stylesheet" href="CSS/style.css">
@@ -177,6 +180,11 @@
                 <div class="panel-row mb-12">
                     <h2 class="card-title">Work Sites</h2>
                     <button class="btn btn-primary" id="addSiteBtn">Add New Site</button>
+                </div>
+                <div class="filters-bar mb-12">
+                    <label class="inline-muted">Active Site</label>
+                    <select class="input" id="activeSiteSelect"></select>
+                    <button class="btn btn-secondary btn-sm" id="clearActiveSiteBtn">Clear</button>
                 </div>
                 <div class="table-wrap">
                     <table class="table">

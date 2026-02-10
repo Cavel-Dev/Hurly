@@ -55,6 +55,7 @@ class Attendance {
   constructor() {
     this.db = window.db;
     this.attendanceCache = [];
+    this.employeeIndex = {};
     this.realtimeChannel = null;
     this.filtersKey = 'huly_attendance_filters';
     this.init();
@@ -63,8 +64,27 @@ class Attendance {
   async init() {
     this.setupEventListeners();
     await this.ensureConnected();
+    await this.populateSites();
+    await this.loadEmployeeIndex();
+    this.clearFilters();
     await this.loadAttendanceData(true);
     this.initRealtime();
+  }
+
+
+  async loadEmployeeIndex() {
+    try {
+      if (!this.db || typeof this.db.getEmployees !== 'function') return;
+      const employees = await this.db.getEmployees();
+      const map = {};
+      (employees || []).forEach((e) => {
+        if (!e || !e.id) return;
+        map[String(e.id)] = e;
+      });
+      this.employeeIndex = map;
+    } catch (e) {
+      console.warn('Failed to load employee index', e);
+    }
   }
 
   async loadAttendanceData(withOverlay = false) {
@@ -78,10 +98,41 @@ class Attendance {
       let attendance = allDates
         ? await this.db.getAttendance({})
         : await this.db.getAttendance({ date });
-      
+
+      if (!allDates && (!attendance || attendance.length === 0)) {
+        try {
+          const activeSite = localStorage.getItem('huly_active_site') || '';
+          const retryKey = `huly_attendance_retry_${date}`;
+          if (activeSite && !localStorage.getItem(retryKey) && this.db && typeof this.db.consolidateToSite === 'function') {
+            localStorage.setItem(retryKey, 'true');
+            await this.db.consolidateToSite(activeSite);
+            attendance = await this.db.getAttendance({ date });
+          }
+        } catch (e) {
+          console.warn('Attendance consolidation retry failed', e);
+        }
+        try {
+          const all = await this.db.getAttendance({});
+          const dated = (all || []).filter((r) => r.date || r.Date);
+          if (dated.length) {
+            const sorted = dated.sort((a, b) => new Date(b.date || b.Date) - new Date(a.date || a.Date));
+            const latestDate = sorted[0].date || sorted[0].Date;
+            if (latestDate) {
+              if (dateInput) dateInput.value = latestDate;
+              attendance = dated.filter((r) => (r.date || r.Date) === latestDate);
+              this.saveFilters({ date: latestDate, allDates: false });
+            }
+          }
+        } catch (e) {
+          console.warn('Attendance fallback failed', e);
+        }
+      }
+
       this.attendanceCache = attendance || [];
+      this.loadEmployeeIndex();
       this.updateDayBadge(allDates ? null : date);
       this.applySearchFilter();
+      await this.maybeNotifyMissingAttendance(this.attendanceCache, date, allDates);
       if (withOverlay) this.hideLoading();
     } catch (error) {
       console.error('Error loading attendance:', error);
@@ -112,6 +163,52 @@ class Attendance {
     if (window.AuthOverlay && typeof window.AuthOverlay.hide === 'function') {
       window.AuthOverlay.hide();
     }
+  }
+
+  async populateSites() {
+    const select = document.getElementById('crewFilter');
+    if (!select || !this.db || typeof this.db.getSites !== 'function') return;
+    try {
+      const sites = await this.db.getSites();
+      let active = localStorage.getItem('huly_active_site') || '';
+      if (!active && sites.length) {
+        const firstId = String(sites[0].id || '');
+        if (firstId) {
+          localStorage.setItem('huly_active_site', firstId);
+          active = firstId;
+        }
+      }
+      const hideAll = localStorage.getItem('huly_default_site_confirmed') === 'true';
+      const options = [
+        ...(hideAll ? [] : ['<option value="">All Sites</option>']),
+        ...sites.map((site) => {
+          const name = site.name || 'Unnamed Site';
+          return `<option value="${site.id}">${name}</option>`;
+        })
+      ];
+      select.innerHTML = options.join('');
+      if (active) select.value = active;
+    } catch (e) {
+      console.warn('Failed to load sites', e);
+    }
+  }
+
+  clearFilters() {
+    try {
+      localStorage.removeItem(this.filtersKey);
+    } catch (e) {}
+    const dateInput = document.getElementById('dateFilter');
+    if (dateInput) {
+      const today = new Date().toISOString().split('T')[0];
+      dateInput.value = today;
+    }
+    const allDatesToggle = document.getElementById('attendanceAllDates');
+    if (allDatesToggle) allDatesToggle.checked = false;
+    const searchInput = document.getElementById('attendanceSearch');
+    if (searchInput) searchInput.value = '';
+    const crewFilter = document.getElementById('crewFilter');
+    const activeSite = localStorage.getItem('huly_active_site') || '';
+    if (crewFilter && activeSite) crewFilter.value = activeSite;
   }
 
   readFilters() {
@@ -159,6 +256,125 @@ class Attendance {
     this.populateAttendanceTable(filtered);
   }
 
+
+  getFunctionsBase() {
+    try {
+      const url = window.SUPABASE_URL || 'https://ncqfvcymhvjcchrwelfg.supabase.co';
+      const origin = new URL(url).origin;
+      return `${origin}/functions/v1`;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async maybeNotifyMissingAttendance(attendance, dateValue, allDates) {
+    try {
+      if (allDates) return;
+      const today = new Date().toISOString().split('T')[0];
+      if (dateValue !== today) return;
+      const dt = new Date(dateValue + 'T00:00:00');
+      const day = dt.getDay();
+      if (day === 0 || day === 6) return; // Sunday or Saturday
+      if (Array.isArray(attendance) && attendance.length > 0) return;
+
+      const key = `huly_attendance_missing_${dateValue}`;
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, 'true');
+
+      const activeSite = localStorage.getItem('huly_active_site') || '';
+      let siteName = '-';
+      if (this.db && typeof this.db.getSites === 'function' && activeSite) {
+        const sites = await this.db.getSites();
+        const match = (sites || []).find(s => String(s.id) === String(activeSite));
+        if (match?.name) siteName = match.name;
+      }
+
+      if (window.app && typeof window.app.showToast === 'function') {
+        window.app.showToast('No attendance recorded for today.', 'warn');
+      }
+
+      const base = this.getFunctionsBase();
+      if (!base) return;
+      await fetch(`${base}/notify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${window.SUPABASE_ANON_KEY || ''}`
+        },
+        body: JSON.stringify({
+          event: 'attendance_missing',
+          date: dateValue,
+          site: siteName
+        })
+      });
+    } catch (e) {
+      console.warn('Attendance missing notification failed', e);
+    }
+  }
+
+
+  async openAttendanceDrawer(employeeId, employeeName) {
+    const drawer = document.getElementById('attendanceDrawer');
+    const overlay = document.getElementById('attendanceDrawerOverlay');
+    const nameEl = document.getElementById('attendanceDrawerName');
+    const metaEl = document.getElementById('attendanceDrawerMeta');
+    const list = document.getElementById('attendanceDrawerList');
+    const closeBtn = document.getElementById('attendanceDrawerClose');
+    if (!drawer || !overlay || !list) return;
+
+    if (nameEl) nameEl.textContent = employeeName || 'Employee';
+    if (metaEl) metaEl.textContent = 'Attendance summary';
+
+    list.innerHTML = '<div class="drawer-empty">Loading attendance...</div>';
+
+    const close = () => {
+      drawer.classList.remove('show');
+      overlay.classList.remove('show');
+      drawer.setAttribute('aria-hidden', 'true');
+      overlay.setAttribute('aria-hidden', 'true');
+    };
+
+    drawer.classList.add('show');
+    overlay.classList.add('show');
+    drawer.setAttribute('aria-hidden', 'false');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    overlay.onclick = close;
+    if (closeBtn) closeBtn.onclick = close;
+
+    try {
+      const records = await this.db.getAttendance({ employeeId });
+      if (!records || records.length === 0) {
+        list.innerHTML = '<div class="drawer-empty">No attendance records found.</div>';
+        return;
+      }
+      const sorted = records.slice().sort((a, b) => new Date(b.date || b.Date || 0) - new Date(a.date || a.Date || 0));
+      list.innerHTML = sorted.map((rec) => {
+        const dateVal = rec.date || rec.Date || '';
+        const dateObj = dateVal ? new Date(dateVal + 'T00:00:00') : null;
+        const dayLabel = dateObj && !Number.isNaN(dateObj.getTime())
+          ? dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+          : dateVal || 'Unknown date';
+        const status = rec.status || 'present';
+        const position = this.employeeIndex[String(rec.employee_id)]?.position || '?';
+        const time = rec.clock_in || rec.clock_out ? `${rec.clock_in || '--'} - ${rec.clock_out || '--'}` : 'No times logged';
+        const hours = rec.hours != null ? `${rec.hours} hrs` : '0 hrs';
+        return `
+          <div class="drawer-card">
+            <strong>${dayLabel}</strong>
+            <div class="drawer-meta">Role: ${position}</div>
+            <div class="drawer-meta">Status: ${status}</div>
+            <div class="drawer-meta">Time: ${time}</div>
+            <div class="drawer-meta">${hours}</div>
+          </div>
+        `;
+      }).join('');
+    } catch (e) {
+      console.warn('Failed to load attendance history', e);
+      list.innerHTML = '<div class="drawer-empty">Unable to load attendance history.</div>';
+    }
+  }
+
   initRealtime() {
     if (!this.db || typeof this.db.getSupabase !== 'function' || !this.db.supabaseHealthy) return;
     this.db.getSupabase().then((sb) => {
@@ -177,28 +393,55 @@ class Attendance {
     });
   }
 
+
   populateAttendanceTable(attendance) {
     const tbody = document.querySelector('.attendance-table tbody');
     if (!tbody) return;
 
     tbody.innerHTML = '';
-    
+
     if (!attendance || attendance.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #666;">No attendance records for this date</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="no-data">No attendance records for this date</td></tr>';
       return;
     }
-    
-    attendance.forEach(record => {
+
+    const sorted = (attendance || []).slice().sort((a, b) => {
+      const da = new Date(a.date || a.Date || 0).getTime();
+      const db = new Date(b.date || b.Date || 0).getTime();
+      if (da !== db) return db - da;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+
+    let currentDate = '';
+    sorted.forEach(record => {
+      const dateValue = record.date || record.Date || '';
+      if (dateValue && dateValue !== currentDate) {
+        currentDate = dateValue;
+        const dateObj = new Date(dateValue + 'T00:00:00');
+        const label = Number.isNaN(dateObj.getTime())
+          ? dateValue
+          : dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+        const dayRow = document.createElement('tr');
+        dayRow.className = 'attendance-day-row';
+        dayRow.innerHTML = `<td colspan="8">${label}</td>`;
+        tbody.appendChild(dayRow);
+      }
+
       const row = document.createElement('tr');
       const statusBadgeClass = record.status === 'present' ? 'badge-success' : record.status === 'absent' ? 'badge-danger' : 'badge-warning';
       const statusIcon = record.status === 'present' ? 'ph-check-circle' : record.status === 'absent' ? 'ph-x-circle' : 'ph-clock';
       const statusText = record.status === 'present' ? 'Present' : record.status === 'absent' ? 'Absent' : 'Late';
-      
+
       row.innerHTML = `
         <td>
           <input type="checkbox" class="attn-select" data-id="${record.id}">
         </td>
-        <td>${record.employee_name || 'N/A'}</td>
+        <td>
+          <button class="attendance-name-btn" data-employee-id="${record.employee_id}" data-employee-name="${record.employee_name || ''}">
+            ${record.employee_name || 'N/A'}
+          </button>
+          <div class="attendance-position">${(this.employeeIndex[String(record.employee_id)]?.position) || '?'}</div>
+        </td>
         <td><span class="badge ${statusBadgeClass}"><i class="ph ${statusIcon}"></i>${statusText}</span></td>
         <td>${record.clock_in || '-'}</td>
         <td>${record.clock_out || '-'}</td>
@@ -209,7 +452,7 @@ class Attendance {
       tbody.appendChild(row);
     });
   }
-  
+
   setupEventListeners() {
     const addWorkerBtn = document.getElementById('addWorkerBtn');
     const rollCallBtn = document.getElementById('rollCallBtn');
@@ -255,7 +498,15 @@ class Attendance {
     }
 
     if (crewFilter) {
-      crewFilter.addEventListener('change', () => this.loadAttendanceData());
+      crewFilter.addEventListener('change', () => {
+        const value = crewFilter.value || '';
+        if (value) {
+          localStorage.setItem('huly_active_site', value);
+        } else {
+          localStorage.removeItem('huly_active_site');
+        }
+        this.loadAttendanceData();
+      });
     }
 
     if (searchInput) {
@@ -293,6 +544,13 @@ class Attendance {
 
     // Add event delegation for edit buttons (handles both static and dynamic buttons)
     document.addEventListener('click', (e) => {
+      const nameBtn = e.target.closest('.attendance-name-btn');
+      if (nameBtn) {
+        const empId = nameBtn.getAttribute('data-employee-id');
+        const empName = nameBtn.getAttribute('data-employee-name') || nameBtn.textContent || 'Employee';
+        this.openAttendanceDrawer(empId, empName);
+        return;
+      }
       if (e.target.classList.contains('edit-btn') || e.target.closest('.edit-btn')) {
         const btn = e.target.classList.contains('edit-btn') ? e.target : e.target.closest('.edit-btn');
         e.preventDefault();
@@ -690,11 +948,11 @@ class Attendance {
           <label for="overtimeToggle" style="color:#bbb; font-size:0.95rem;">Log overtime (allow duplicate for same day)</label>
         </div>
 
-        <div style="margin: 18px 0; display:flex; align-items:center; gap:10px;">
-          <input type="checkbox" id="clockOvertimeToggle" style="width:18px;height:18px;">
-          <label for="clockOvertimeToggle" style="color:#bbb; font-size:0.95rem;">Log overtime (allow duplicate for same day)</label>
+        <div style="margin: 18px 0;">
+          <label style="display:block;margin-bottom:8px;font-weight:500;color:#999;font-size:0.95rem;">Overtime hours</label>
+          <input type="number" id="overtimeHours" class="input" min="0" step="0.25" placeholder="0" style="width:100%;padding:12px 16px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;font-size:1rem;transition:all 0.3s ease;">
         </div>
-        
+
         <div style="display: flex; gap: 12px; margin-top: 24px">
           <button id="cancelRollCall" class="btn btn-secondary" style="
             flex: 1;
@@ -796,6 +1054,7 @@ class Attendance {
       const employeeName = employeeSelect.options[employeeSelect.selectedIndex].text;
       const status = document.getElementById('statusSelect').value;
       const overtime = Boolean(document.getElementById('overtimeToggle')?.checked);
+      const overtimeHours = parseFloat(document.getElementById('overtimeHours')?.value || '0') || 0;
       
       // Don't proceed if no valid employee selected
       if (!employeeId || employeeName === 'Loading employees...' || employeeName === 'No employees found' || employeeName === 'Error loading employees') {
@@ -810,9 +1069,27 @@ class Attendance {
 
       try {
         const existing = await self.db.getAttendance({ date: selectedDate });
-        const already = (existing || []).some((r) => String(r.employee_id) === String(employeeId));
-        if (already && !overtime) {
-          notify('Attendance already recorded for this employee on this date. Use overtime to add another entry.', 'warn');
+        const record = (existing || []).find((r) => String(r.employee_id) === String(employeeId));
+        if (record && !overtime) {
+          const updates = { status: 'present' };
+          if (overtimeHours > 0) {
+            updates.hours = (record.hours || 8) + overtimeHours;
+            updates.notes = `Overtime: ${overtimeHours} hrs`;
+          }
+          if (time) {
+            if (!record.clock_in) {
+              updates.clock_in = time;
+            } else if (!record.clock_out) {
+              updates.clock_out = time;
+            } else {
+              notify('Clock in/out already recorded. Use overtime to add another entry.', 'warn');
+              return;
+            }
+          }
+          await self.db.updateAttendance(record.id, updates);
+          modal.remove();
+          await self.loadAttendanceData();
+          if (window.app && typeof window.app.showToast === 'function') window.app.showToast('Attendance updated', 'success');
           return;
         }
       } catch (e) {
@@ -824,11 +1101,11 @@ class Attendance {
         employee_name: employeeName,
         status: status,
         date: selectedDate,
-        clock_in: null,
-        clock_out: null,
-        hours: 8,
-        notes: overtime ? 'Overtime entry' : '',
-        site_id: crewFilter ? crewFilter.value : ''
+        clock_in: '07:00',
+        clock_out: '15:00',
+        hours: 8 + overtimeHours,
+        notes: overtimeHours > 0 ? `Overtime: ${overtimeHours} hrs` : (overtime ? 'Overtime entry' : ''),
+        site_id: (localStorage.getItem('huly_active_site') || '')
       };
       
       console.log('Marking attendance:', attendanceData);
@@ -953,6 +1230,16 @@ class Attendance {
             color-scheme: dark;
           " value="${new Date().toTimeString().split(' ')[0].substring(0, 5)}">
         </div>
+
+        <div style="margin: 18px 0; display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" id="clockOvertimeToggle" style="width:18px;height:18px;">
+          <label for="clockOvertimeToggle" style="color:#bbb; font-size:0.95rem;">Log overtime (allow duplicate for same day)</label>
+        </div>
+
+        <div style="margin: 18px 0;">
+          <label style="display:block;margin-bottom:8px;font-weight:500;color:#999;font-size:0.95rem;">Overtime hours</label>
+          <input type="number" id="clockOvertimeHours" class="input" min="0" step="0.25" placeholder="0" style="width:100%;padding:12px 16px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;font-size:1rem;transition:all 0.3s ease;">
+        </div>
         
         <div style="display: flex; gap: 12px; margin-top: 24px">
           <button id="cancelClock" class="btn btn-secondary" style="
@@ -1055,6 +1342,7 @@ class Attendance {
       const employeeName = employeeSelect.options[employeeSelect.selectedIndex].text;
       const time = document.getElementById('clockTime').value;
       const overtime = Boolean(document.getElementById('clockOvertimeToggle')?.checked);
+      const overtimeHours = parseFloat(document.getElementById('clockOvertimeHours')?.value || '0') || 0;
       
       // Don't proceed if no valid employee selected
       if (!employeeId || employeeName === 'Loading employees...' || employeeName === 'No employees found' || employeeName === 'Error loading employees') {
@@ -1067,9 +1355,27 @@ class Attendance {
 
       try {
         const existing = await self.db.getAttendance({ date: selectedDate });
-        const already = (existing || []).some((r) => String(r.employee_id) === String(employeeId));
-        if (already && !overtime) {
-          notify('Attendance already recorded for this employee on this date. Use overtime to add another entry.', 'warn');
+        const record = (existing || []).find((r) => String(r.employee_id) === String(employeeId));
+        if (record && !overtime) {
+          const updates = { status: 'present' };
+          if (overtimeHours > 0) {
+            updates.hours = (record.hours || 8) + overtimeHours;
+            updates.notes = `Overtime: ${overtimeHours} hrs`;
+          }
+          if (time) {
+            if (!record.clock_in) {
+              updates.clock_in = time;
+            } else if (!record.clock_out) {
+              updates.clock_out = time;
+            } else {
+              notify('Clock in/out already recorded. Use overtime to add another entry.', 'warn');
+              return;
+            }
+          }
+          await self.db.updateAttendance(record.id, updates);
+          modal.remove();
+          await self.loadAttendanceData();
+          if (window.app && typeof window.app.showToast === 'function') window.app.showToast('Attendance updated', 'success');
           return;
         }
       } catch (e) {
@@ -1081,11 +1387,11 @@ class Attendance {
         employee_name: employeeName,
         status: 'present',
         date: selectedDate,
-        clock_in: time || null,
-        clock_out: null,
-        hours: time ? 0 : 8,
-        notes: overtime ? 'Overtime entry' : '',
-        site_id: (document.getElementById('crewFilter') || {}).value || ''
+        clock_in: time || '07:00',
+        clock_out: time ? null : '15:00',
+        hours: (time ? 8 : 8) + overtimeHours,
+        notes: overtimeHours > 0 ? `Overtime: ${overtimeHours} hrs` : (overtime ? 'Overtime entry' : ''),
+        site_id: (localStorage.getItem('huly_active_site') || '')
       };
       
       console.log('Clocking in:', attendanceData);

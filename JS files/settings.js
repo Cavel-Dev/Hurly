@@ -37,6 +37,7 @@ class Settings {
     if (resetBtn) resetBtn.addEventListener('click', () => this.resetAllData());
     if (enableMfaBtn) enableMfaBtn.addEventListener('click', () => this.enableMfa());
     this.setupAddSiteButton();
+    this.bindActiveSiteSelector();
   }
 
   showMfaSetupNotice() {
@@ -53,6 +54,7 @@ class Settings {
     try {
       const sites = await this.db.getSites();
       this.populateSitesTable(sites);
+      await this.populateActiveSiteSelect(sites);
     } catch (error) {
       console.error('Error loading sites:', error);
     }
@@ -119,6 +121,58 @@ class Settings {
         }
       });
     });
+  }
+
+  bindActiveSiteSelector() {
+    const select = document.getElementById('activeSiteSelect');
+    const clearBtn = document.getElementById('clearActiveSiteBtn');
+    if (select) {
+      select.addEventListener('change', (e) => {
+        const value = e.target.value || '';
+        if (value) {
+          localStorage.setItem('huly_active_site', value);
+          notify('Active site updated.', 'success');
+        }
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        localStorage.removeItem('huly_active_site');
+        if (select) select.value = '';
+        notify('Active site cleared.', 'success');
+      });
+    }
+  }
+
+  async populateActiveSiteSelect(sites) {
+    const select = document.getElementById('activeSiteSelect');
+    if (!select) return;
+    const current = localStorage.getItem('huly_active_site') || '';
+    const rows = Array.isArray(sites) ? sites : [];
+    if (!current && rows.length) {
+      const firstId = String(rows[0].id || '');
+      if (firstId) {
+        localStorage.setItem('huly_active_site', firstId);
+        const backfillDone = localStorage.getItem('huly_site_backfill_done');
+        if (!backfillDone && this.db && typeof this.db.backfillMissingSiteId === 'function') {
+          try {
+            await this.db.backfillMissingSiteId(firstId);
+            localStorage.setItem('huly_site_backfill_done', 'true');
+          } catch (e) {
+            console.warn('Site backfill failed', e);
+          }
+        }
+      }
+    }
+    const currentEffective = localStorage.getItem('huly_active_site') || '';
+    const hideAll = localStorage.getItem('huly_default_site_confirmed') === 'true';
+    const baseOption = hideAll ? '' : `<option value="">All sites</option>`;
+    select.innerHTML = baseOption + rows.map((site) => `
+      <option value="${site.id}" ${String(site.id) === String(currentEffective) ? 'selected' : ''}>
+        ${this.escapeHtml(site.name || 'Unnamed Site')}
+      </option>
+    `).join('');
   }
 
   setupAddSiteButton() {

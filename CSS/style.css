@@ -1198,6 +1198,13 @@ select:focus {
         transform: translateX(0);
     }
 
+    .toggle-btn {
+        position: fixed;
+        left: 16px;
+        top: 18px;
+        z-index: 1200;
+    }
+
     .main-content {
         padding: 28px 20px 60px;
     }
@@ -1205,6 +1212,13 @@ select:focus {
     .page-header {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .header-right {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 12px;
     }
 
     .datetime-display {
@@ -1218,6 +1232,37 @@ select:focus {
     .card-grid-3 {
         grid-template-columns: 1fr;
     }
+
+    .action-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .action-buttons {
+        width: 100%;
+        flex-direction: column;
+    }
+
+    .action-buttons .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .filters,
+    .filters-bar {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filters > *,
+    .filters-bar > * {
+        width: 100%;
+    }
+}
+
+.table {
+    min-width: 720px;
 }
 
 /* Theme guard: ensure text/headers are visible even if external styles override colors */

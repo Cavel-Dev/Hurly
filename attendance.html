@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Attendance - Hurly</title>
+    <link rel="icon" type="image/png" href="Assets/image.png">
+    <link rel="apple-touch-icon" href="Assets/image.png">
+
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
     <link rel="stylesheet" href="CSS/style.css">
@@ -143,10 +146,7 @@
                     </label>
                     <input type="date" class="date-input" id="dateFilter">
                     <select class="select-input" id="crewFilter">
-                        <option>All Crews</option>
-                        <option>Crew A</option>
-                        <option>Crew B</option>
-                        <option>Crew C</option>
+                        <option value="">All Sites</option>
                     </select>
                     <button class="btn btn-secondary">
                         <i class="ph ph-funnel"></i>
@@ -178,6 +178,23 @@
             </div>
         </div>
     </div>
+
+    <div class="attendance-drawer-overlay" id="attendanceDrawerOverlay" aria-hidden="true"></div>
+    <aside class="attendance-drawer" id="attendanceDrawer" aria-hidden="true">
+        <div class="drawer-header">
+            <div>
+                <div class="drawer-title" id="attendanceDrawerName">Employee</div>
+                <div class="drawer-subtitle" id="attendanceDrawerMeta">Attendance summary</div>
+            </div>
+            <button class="icon-btn" id="attendanceDrawerClose" aria-label="Close">x</button>
+        </div>
+        <div class="drawer-body">
+            <div class="drawer-section-title">Recent Attendance</div>
+            <div class="drawer-list" id="attendanceDrawerList">
+                <div class="drawer-empty">No attendance records found.</div>
+            </div>
+        </div>
+    </aside>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
     <script src="JS%20files/sidebar.js"></script>

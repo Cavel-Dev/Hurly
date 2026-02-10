@@ -100,6 +100,62 @@ $(document).ready(function() {
         }
     });
 
+    const activeSiteKey = 'huly_active_site';
+    const siteSelect = document.getElementById('dashboardSiteSelect');
+    const siteClearBtn = document.getElementById('dashboardSiteClear');
+
+    async function populateDashboardSites() {
+        if (!siteSelect || !window.db) return;
+        const sites = await window.db.getSites();
+        let activeSite = localStorage.getItem(activeSiteKey) || '';
+        if (!activeSite && sites.length) {
+            const firstId = String(sites[0].id || '');
+            if (firstId) {
+                localStorage.setItem(activeSiteKey, firstId);
+                activeSite = firstId;
+                const backfillDone = localStorage.getItem('huly_site_backfill_done');
+                if (!backfillDone && window.db && typeof window.db.backfillMissingSiteId === 'function') {
+                    try {
+                        await window.db.backfillMissingSiteId(firstId);
+                        localStorage.setItem('huly_site_backfill_done', 'true');
+                    } catch (e) {
+                        console.warn('Site backfill failed', e);
+                    }
+                }
+            }
+        }
+        const hideAll = localStorage.getItem('huly_default_site_confirmed') === 'true';
+        const options = [
+            ...(hideAll ? [] : ['<option value="">All sites</option>']),
+            ...sites.map(site => {
+                const label = site.name ? site.name : `Site ${site.id || ''}`.trim();
+                return `<option value="${site.id}">${label}</option>`;
+            })
+        ];
+        siteSelect.innerHTML = options.join('');
+        siteSelect.value = activeSite;
+    }
+
+    if (siteSelect) {
+        siteSelect.addEventListener('change', () => {
+            const value = siteSelect.value || '';
+            if (value) {
+                localStorage.setItem(activeSiteKey, value);
+            } else {
+                localStorage.removeItem(activeSiteKey);
+            }
+            updateDashboardSnapshot();
+        });
+    }
+
+    if (siteClearBtn) {
+        siteClearBtn.addEventListener('click', () => {
+            localStorage.removeItem(activeSiteKey);
+            if (siteSelect) siteSelect.value = '';
+            updateDashboardSnapshot();
+        });
+    }
+
     let isUpdating = false;
     async function updateDashboardSnapshot() {
         if (isUpdating) return;
@@ -186,7 +242,7 @@ $(document).ready(function() {
         if (kpiActiveTag) kpiActiveTag.textContent = `${activeEmployees} Active`;
         if (kpiAttendanceToday) kpiAttendanceToday.textContent = attendanceToday.length.toLocaleString('en-US');
         if (kpiAttendanceMeta) {
-            kpiAttendanceMeta.textContent = `${presentCount} Present • ${lateCount} Late • ${absentCount} Absent`;
+            kpiAttendanceMeta.textContent = `${presentCount} Present  ${lateCount} Late  ${absentCount} Absent`;
         }
         if (kpiPayrollEstimate) {
             kpiPayrollEstimate.textContent = new Intl.NumberFormat('en-JM', { style: 'currency', currency: 'JMD' }).format(payrollTotal || 0);
@@ -295,7 +351,7 @@ $(document).ready(function() {
                     <li class="snapshot-item">
                         <div>
                             <strong>${label}</strong>
-                            <div class="snapshot-meta">${new Intl.NumberFormat('en-JM', { style: 'currency', currency: 'JMD' }).format(total)} • ${created}</div>
+                            <div class="snapshot-meta">${new Intl.NumberFormat('en-JM', { style: 'currency', currency: 'JMD' }).format(total)}  ${created}</div>
                         </div>
                         <span class="status-chip ${status}">${run.status || 'Draft'}</span>
                     </li>
@@ -328,7 +384,7 @@ function updateRecentActivity(employeeList, attendanceList, payrollList) {
 
         payrollList.slice(-1).forEach(run => {
             items.push({
-                title: `Payroll run ${run.status || 'Draft'} • ${run.pay_period || 'New period'}`,
+                title: `Payroll run ${run.status || 'Draft'}  ${run.pay_period || 'New period'}`,
                 meta: 'Payroll activity',
                 status: run.status === 'Final' ? 'status-success' : 'status-warning'
             });
@@ -399,6 +455,7 @@ function updateRecentActivity(employeeList, attendanceList, payrollList) {
         `;
     }
 
+    populateDashboardSites();
     updateDashboardSnapshot();
     setInterval(updateDashboardSnapshot, 1000);
 });

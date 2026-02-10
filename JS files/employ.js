@@ -360,7 +360,8 @@ class Employees {
         status: data.status,
         document_status: data.document_status,
         email: data.email,
-        phone: data.phone
+        phone: data.phone,
+        site_id: localStorage.getItem('huly_active_site') || ''
       });
     }
   }

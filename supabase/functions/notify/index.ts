@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "";
 const ALERT_RECIPIENT = Deno.env.get("ALERT_RECIPIENT") ?? "";
+const PAYRUN_RECIPIENT = Deno.env.get("PAYRUN_RECIPIENT") ?? "cavelellis103@gmail.com";
 
 const allowedOriginsRaw = Deno.env.get("ALLOWED_ORIGINS") ?? "*";
 const allowedOrigins = allowedOriginsRaw
@@ -158,8 +159,9 @@ serve(async (req) => {
   if (table && type) {
     if (table === "payroll" && type === "UPDATE" && record?.status === "Final" && old?.status !== "Final") {
       const entries = Array.isArray(record?.entries) ? record.entries : [];
+      const payrunRecipients = Array.from(new Set([...(toList.length ? toList : [ALERT_RECIPIENT]), PAYRUN_RECIPIENT].filter(Boolean)));
       return await sendEmail({
-        to: toList.length ? toList : ALERT_RECIPIENT,
+        to: payrunRecipients,
         subject: `Hurly Payroll Final: ${record?.pay_period || ""}`,
         templateData: baseTemplateData({
           TITLE: "Payroll Finalized",

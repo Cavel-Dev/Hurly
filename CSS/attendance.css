@@ -20,6 +20,126 @@
     padding: 6px;
 }
 
+.attendance-day-row td {
+    padding: 12px 18px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #dcdcdc;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.attendance-name-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+.attendance-name-btn:hover {
+    text-decoration: underline;
+}
+
+.attendance-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 200ms ease, visibility 200ms ease;
+    z-index: 6000;
+}
+
+.attendance-drawer-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.attendance-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: min(420px, 92vw);
+    height: 100vh;
+    background: #0f0f0f;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: -20px 0 50px rgba(0, 0, 0, 0.45);
+    transform: translateX(100%);
+    transition: transform 200ms ease;
+    z-index: 6100;
+    display: flex;
+    flex-direction: column;
+}
+
+.attendance-drawer.show {
+    transform: translateX(0);
+}
+
+.drawer-header {
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.drawer-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.drawer-subtitle {
+    color: #a8a8a8;
+    font-size: 0.9rem;
+}
+
+.drawer-body {
+    padding: 18px 20px;
+    overflow-y: auto;
+    display: grid;
+    gap: 12px;
+}
+
+.drawer-section-title {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #9a9a9a;
+}
+
+.drawer-list {
+    display: grid;
+    gap: 10px;
+}
+
+.drawer-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: grid;
+    gap: 6px;
+}
+
+.drawer-card strong {
+    font-size: 0.95rem;
+}
+
+.drawer-meta {
+    color: #b3b3b3;
+    font-size: 0.85rem;
+}
+
+.drawer-empty {
+    color: #b3b3b3;
+    font-size: 0.9rem;
+    padding: 12px 0;
+}
+
 @media (max-width: 768px) {
     .table-container {
         overflow-x: auto;
@@ -33,4 +153,10 @@
         flex-direction: column;
         align-items: flex-start;
     }
+}
+
+.attendance-position {
+    color: #9a9a9a;
+    font-size: 0.78rem;
+    margin-top: 4px;
 }
