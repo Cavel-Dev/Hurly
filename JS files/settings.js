@@ -30,12 +30,14 @@ class Settings {
     const restoreInput = document.getElementById('restoreDataInput');
     const resetBtn = document.getElementById('resetAllDataBtn');
     const enableMfaBtn = document.getElementById('enableMfaBtn');
+    const signOutAllBtn = document.getElementById('signOutAllBtn');
     if (saveCompanyBtn) saveCompanyBtn.addEventListener('click', () => this.saveCompanySettings());
     if (savePayrollBtn) savePayrollBtn.addEventListener('click', () => this.savePayrollSettings());
     if (backupBtn) backupBtn.addEventListener('click', () => this.downloadBackup());
     if (restoreInput) restoreInput.addEventListener('change', (e) => this.restoreBackup(e));
     if (resetBtn) resetBtn.addEventListener('click', () => this.resetAllData());
     if (enableMfaBtn) enableMfaBtn.addEventListener('click', () => this.enableMfa());
+    if (signOutAllBtn) signOutAllBtn.addEventListener('click', () => this.signOutAllDevices());
     this.setupAddSiteButton();
     this.bindActiveSiteSelector();
   }
@@ -438,6 +440,33 @@ class Settings {
     } catch (e) {
       notify('Reset failed: ' + e.message, 'error');
     }
+  }
+
+  async signOutAllDevices() {
+    const confirmAll = confirm('Sign out this account from all devices?');
+    if (!confirmAll) return;
+
+    try {
+      if (this.db && typeof this.db.getSupabase === 'function' && this.db.supabaseHealthy) {
+        const sb = await this.db.getSupabase();
+        if (sb?.auth?.signOut) {
+          try {
+            await sb.auth.signOut({ scope: 'global' });
+          } catch (e) {
+            await sb.auth.signOut();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase global sign-out failed:', e);
+    }
+
+    try {
+      localStorage.removeItem('huly_session');
+    } catch (e) {}
+
+    notify('Signed out on all devices. Please log in again.', 'success');
+    window.location.href = 'index.html';
   }
 
   escapeHtml(value) {

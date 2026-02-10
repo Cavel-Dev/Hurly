@@ -1,5 +1,25 @@
 // Attendance Page JavaScript
 
+function getLocalDateString() {
+    const now = new Date();
+    const offsetMs = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offsetMs).toISOString().split('T')[0];
+}
+
+function normalizeDateValue(raw) {
+    if (!raw) return '';
+    const str = String(raw);
+    if (str.includes('T')) return str.split('T')[0];
+    if (str.includes(' ')) return str.split(' ')[0];
+    return str;
+}
+
+function localDateFromYMD(ymd) {
+    if (!ymd) return null;
+    const date = new Date(ymd + 'T00:00:00');
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
 $(document).ready(function() {
     // Update date and time
     function updateDateTime() {
@@ -35,11 +55,11 @@ $(document).ready(function() {
     try {
         const saved = localStorage.getItem('huly_attendance_filters');
         if (!saved && !$('#dateFilter').val()) {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getLocalDateString();
             $('#dateFilter').val(today);
         }
     } catch (e) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDateString();
         $('#dateFilter').val(today);
     }
 });
@@ -58,6 +78,7 @@ class Attendance {
     this.employeeIndex = {};
     this.realtimeChannel = null;
     this.filtersKey = 'huly_attendance_filters';
+    this.mfaPrompting = false;
     this.init();
   }
   
@@ -92,7 +113,7 @@ class Attendance {
       if (withOverlay) this.showLoading('Loading attendance...');
       const dateInput = document.getElementById('dateFilter');
       const allDates = Boolean(document.getElementById('attendanceAllDates')?.checked);
-      const date = dateInput?.value || new Date().toISOString().split('T')[0];
+      const date = normalizeDateValue(dateInput?.value || getLocalDateString());
       this.saveFilters({ date, allDates });
       
       let attendance = allDates
@@ -115,12 +136,12 @@ class Attendance {
           const all = await this.db.getAttendance({});
           const dated = (all || []).filter((r) => r.date || r.Date);
           if (dated.length) {
-            const sorted = dated.sort((a, b) => new Date(b.date || b.Date) - new Date(a.date || a.Date));
-            const latestDate = sorted[0].date || sorted[0].Date;
+            const sorted = dated.sort((a, b) => new Date(normalizeDateValue(b.date || b.Date)) - new Date(normalizeDateValue(a.date || a.Date)));
+            const latestDate = normalizeDateValue(sorted[0].date || sorted[0].Date);
             if (latestDate) {
               if (dateInput) dateInput.value = latestDate;
-              attendance = dated.filter((r) => (r.date || r.Date) === latestDate);
-              this.saveFilters({ date: latestDate, allDates: false });
+              attendance = dated.filter((r) => normalizeDateValue(r.date || r.Date) === latestDate);
+              this.saveFilters({ date: latestDate, allDates: false, manual: false });
             }
           }
         } catch (e) {
@@ -199,7 +220,7 @@ class Attendance {
     } catch (e) {}
     const dateInput = document.getElementById('dateFilter');
     if (dateInput) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       dateInput.value = today;
     }
     const allDatesToggle = document.getElementById('attendanceAllDates');
@@ -222,7 +243,9 @@ class Attendance {
 
   saveFilters(filters) {
     try {
-      localStorage.setItem(this.filtersKey, JSON.stringify(filters));
+      const existing = this.readFilters() || {};
+      const merged = { ...existing, ...filters };
+      localStorage.setItem(this.filtersKey, JSON.stringify(merged));
     } catch (e) {}
   }
 
@@ -233,8 +256,9 @@ class Attendance {
       badge.textContent = 'Date: All';
       return;
     }
-    const date = new Date(dateValue);
-    if (Number.isNaN(date.getTime())) {
+    const normalized = normalizeDateValue(dateValue);
+    const date = localDateFromYMD(normalized);
+    if (!date) {
       badge.textContent = 'Date: --';
       return;
     }
@@ -267,10 +291,109 @@ class Attendance {
     }
   }
 
+  async promptMfaCode() {
+    if (this.mfaPrompting) return null;
+    this.mfaPrompting = true;
+    return await new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.8);
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1200;
+      `;
+      overlay.innerHTML = `
+        <div style="
+          background:#0e0e0e;
+          border:1px solid #222;
+          border-radius:16px;
+          padding:28px;
+          width:90%;
+          max-width:420px;
+          box-shadow:0 24px 60px rgba(0,0,0,0.55);
+        ">
+          <h3 style="margin:0 0 8px 0;color:#fff;font-size:1.25rem;">Verify MFA</h3>
+          <p style="margin:0 0 18px 0;color:#aaa;font-size:0.95rem;">
+            Enter your authenticator code to view a different date.
+          </p>
+          <input id="mfaDateCode" class="input" placeholder="123 456" style="
+            width:100%;
+            padding:12px 14px;
+            background:#111;
+            border:1px solid #222;
+            border-radius:12px;
+            color:#fff;
+            font-size:1rem;
+            letter-spacing:2px;
+          "/>
+          <div style="display:flex;gap:10px;margin-top:18px;">
+            <button id="mfaDateCancel" class="btn btn-secondary" style="flex:1;">Cancel</button>
+            <button id="mfaDateVerify" class="btn btn-primary" style="flex:1;">Verify</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const codeInput = overlay.querySelector('#mfaDateCode');
+      const cancelBtn = overlay.querySelector('#mfaDateCancel');
+      const verifyBtn = overlay.querySelector('#mfaDateVerify');
+      const cleanup = (val) => {
+        overlay.remove();
+        this.mfaPrompting = false;
+        resolve(val);
+      };
+      cancelBtn.addEventListener('click', () => cleanup(null));
+      verifyBtn.addEventListener('click', () => cleanup((codeInput?.value || '').replace(/\s+/g, '')));
+    });
+  }
+
+  async requireMfaForDateChange() {
+    try {
+      if (!this.db || typeof this.db.getSupabase !== 'function') {
+        notify('Supabase not available for MFA.', 'error');
+        return false;
+      }
+      const supabase = await this.db.getSupabase();
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+      if (factorsError) {
+        notify('MFA check failed.', 'error');
+        return false;
+      }
+      const verifiedTotp = (factorsData?.totp || []).filter((f) => f.status === 'verified');
+      const factorId = verifiedTotp[0]?.id || null;
+      if (!factorId) {
+        notify('MFA not enabled for this account.', 'warn');
+        return false;
+      }
+      const code = await this.promptMfaCode();
+      if (!code || code.length < 6) {
+        notify('MFA verification cancelled.', 'warn');
+        return false;
+      }
+      const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({
+        factorId,
+        code
+      });
+      if (verifyError) {
+        notify('Invalid authenticator code.', 'error');
+        return false;
+      }
+      notify('MFA verified.', 'success');
+      return true;
+    } catch (e) {
+      console.warn('MFA verification failed', e);
+      notify('MFA verification failed.', 'error');
+      return false;
+    }
+  }
+
   async maybeNotifyMissingAttendance(attendance, dateValue, allDates) {
     try {
       if (allDates) return;
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       if (dateValue !== today) return;
       const dt = new Date(dateValue + 'T00:00:00');
       const day = dt.getDay();
@@ -343,15 +466,32 @@ class Attendance {
     if (closeBtn) closeBtn.onclick = close;
 
     try {
-      const records = await this.db.getAttendance({ employeeId });
+      let records = [];
+      if (this.db && typeof this.db.getSupabase === 'function') {
+        const sb = await this.db.getSupabase();
+        if (sb && this.db.supabaseHealthy) {
+          const { data, error } = await sb
+            .from('attendance')
+            .select('*')
+            .eq('employee_id', String(employeeId))
+            .order('created_at', { ascending: false });
+          if (!error && Array.isArray(data)) {
+            records = data;
+          }
+        }
+      }
+      if (!records || records.length === 0) {
+        const local = this.db?.getLocalTable ? this.db.getLocalTable('attendance') : [];
+        records = (local || []).filter((r) => String(r.employee_id || r.employee_ID) === String(employeeId));
+      }
       if (!records || records.length === 0) {
         list.innerHTML = '<div class="drawer-empty">No attendance records found.</div>';
         return;
       }
-      const sorted = records.slice().sort((a, b) => new Date(b.date || b.Date || 0) - new Date(a.date || a.Date || 0));
+      const sorted = records.slice().sort((a, b) => new Date(normalizeDateValue(b.date || b.Date || 0)) - new Date(normalizeDateValue(a.date || a.Date || 0)));
       list.innerHTML = sorted.map((rec) => {
-        const dateVal = rec.date || rec.Date || '';
-        const dateObj = dateVal ? new Date(dateVal + 'T00:00:00') : null;
+        const dateVal = normalizeDateValue(rec.date || rec.Date || '');
+        const dateObj = localDateFromYMD(dateVal);
         const dayLabel = dateObj && !Number.isNaN(dateObj.getTime())
           ? dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
           : dateVal || 'Unknown date';
@@ -406,18 +546,18 @@ class Attendance {
     }
 
     const sorted = (attendance || []).slice().sort((a, b) => {
-      const da = new Date(a.date || a.Date || 0).getTime();
-      const db = new Date(b.date || b.Date || 0).getTime();
+      const da = new Date(normalizeDateValue(a.date || a.Date || 0)).getTime();
+      const db = new Date(normalizeDateValue(b.date || b.Date || 0)).getTime();
       if (da !== db) return db - da;
       return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
     });
 
     let currentDate = '';
     sorted.forEach(record => {
-      const dateValue = record.date || record.Date || '';
+      const dateValue = normalizeDateValue(record.date || record.Date || '');
       if (dateValue && dateValue !== currentDate) {
         currentDate = dateValue;
-        const dateObj = new Date(dateValue + 'T00:00:00');
+        const dateObj = localDateFromYMD(dateValue);
         const label = Number.isNaN(dateObj.getTime())
           ? dateValue
           : dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
@@ -455,7 +595,6 @@ class Attendance {
 
   setupEventListeners() {
     const addWorkerBtn = document.getElementById('addWorkerBtn');
-    const rollCallBtn = document.getElementById('rollCallBtn');
     const clockInBtn = document.getElementById('clockInBtn');
     const deleteBtn = document.getElementById('deleteAttendanceBtn');
     const dateFilter = document.getElementById('dateFilter');
@@ -465,22 +604,19 @@ class Attendance {
     
     if (dateFilter) {
       const saved = this.readFilters();
-      if (saved?.date) {
-        dateFilter.value = saved.date;
+      const today = getLocalDateString();
+      if (saved?.date && saved?.manual) {
+        dateFilter.value = normalizeDateValue(saved.date);
       } else {
-        dateFilter.valueAsDate = new Date();
+        dateFilter.value = today;
       }
-      dateFilter.addEventListener('change', () => this.loadAttendanceData());
-    }
-    
-    if (rollCallBtn) {
-      rollCallBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        console.log('Roll Call button clicked');
-        this.showRollCallModal();
+      dateFilter.addEventListener('change', async () => {
+        const selected = normalizeDateValue(dateFilter.value || getLocalDateString());
+        this.saveFilters({ date: selected, allDates: Boolean(allDatesToggle?.checked), manual: selected !== today });
+        this.loadAttendanceData();
       });
     }
-
+    
     if (addWorkerBtn) {
       addWorkerBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -895,7 +1031,28 @@ class Attendance {
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
-        ">Roll Call</h2>
+        ">Add Attendance</h2>
+
+        <div style="margin: 20px 0">
+          <label style="
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #999;
+            font-size: 0.95rem;
+          ">Date:</label>
+          <input type="date" id="attendanceDateInput" class="input" style="
+            width: 100%;
+            padding: 12px 16px;
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            color-scheme: dark;
+          ">
+        </div>
         
         <div style="margin: 20px 0">
           <label style="
@@ -999,6 +1156,10 @@ class Attendance {
 
     const cancelBtn = document.getElementById('cancelRollCall');
     const markBtn = document.getElementById('markRollCall');
+    const dateInput = document.getElementById('attendanceDateInput');
+    if (dateInput) {
+      dateInput.value = getLocalDateString();
+    }
 
     cancelBtn.addEventListener('mouseenter', function() {
       this.style.background = '#111';
@@ -1062,8 +1223,7 @@ class Attendance {
         return;
       }
       
-      const dateInput = document.getElementById('dateFilter');
-      const selectedDate = dateInput?.value || new Date().toISOString().split('T')[0];
+      const selectedDate = normalizeDateValue(document.getElementById('attendanceDateInput')?.value || getLocalDateString());
       const now = new Date(`${selectedDate}T00:00:00`);
       const crewFilter = document.getElementById('crewFilter');
 
@@ -1351,7 +1511,7 @@ class Attendance {
       }
       
       const dateInput = document.getElementById('dateFilter');
-      const selectedDate = dateInput?.value || new Date().toISOString().split('T')[0];
+      const selectedDate = dateInput?.value || getLocalDateString();
 
       try {
         const existing = await self.db.getAttendance({ date: selectedDate });

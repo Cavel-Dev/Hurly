@@ -112,6 +112,11 @@
             hideAuth();
             return;
         }
+        const localSession = localStorage.getItem(SESSION_KEY);
+        if (!localSession) {
+            window.location.href = 'login.html';
+            return;
+        }
 
         const INACTIVITY_LIMIT_MS = 60 * 60 * 1000;
         const INACTIVITY_WARN_MS = 55 * 60 * 1000;

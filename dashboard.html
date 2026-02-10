@@ -4,15 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Hurly</title>
-    <link rel="icon" type="image/png" href="Assets/image.png">
-    <link rel="apple-touch-icon" href="Assets/image.png">
+    <link rel="icon" type="image/png" href="Assets/38289049-9B95-4A34-A18A-E69D09B8D668-removebg-preview.png">
+    <link rel="apple-touch-icon" href="Assets/38289049-9B95-4A34-A18A-E69D09B8D668-removebg-preview.png">
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
     <link rel="stylesheet" href="CSS/style.css">
     <script src="JS%20files/db.js"></script>
 </head>
-<body data-auth-check="on">
+<body data-auth-check="on" class="dashboard-mode">
     <div class="auth-overlay" id="authOverlay" aria-hidden="true">
         <div class="auth-panel" role="status" aria-live="polite">
             <div class="auth-orb"></div>
@@ -117,6 +117,29 @@
                         <span>Loading date...</span>
                     </div>
                 </div>
+            </div>
+
+            <div class="quick-links-panel">
+                <a class="quick-link-card" href="attendance.html">
+                    <i class="ph ph-user"></i>
+                    <span>Attendance</span>
+                </a>
+                <a class="quick-link-card" href="Employees.html">
+                    <i class="ph ph-user-circle"></i>
+                    <span>Employees</span>
+                </a>
+                <a class="quick-link-card" href="payroll.html">
+                    <i class="ph ph-money"></i>
+                    <span>Payroll</span>
+                </a>
+                <a class="quick-link-card" href="reports.html">
+                    <i class="ph ph-book-open"></i>
+                    <span>Reports</span>
+                </a>
+                <a class="quick-link-card" href="settings.html">
+                    <i class="ph ph-gear"></i>
+                    <span>Settings</span>
+                </a>
             </div>
 
             <div class="kpi-grid">
@@ -248,8 +271,34 @@
                     </ul>
                 </div>
             </div>
+            <div class="page-footer">
+                Created by Nora Technologies (a subgroup of Arc Group). Terms and conditions apply.
+            </div>
         </div>
     </div>
+
+    <nav class="mobile-quick-nav" aria-label="Quick navigation">
+        <a href="dashboard.html" class="quick-link active">
+            <i class="ph ph-house-simple"></i>
+            <span>Dashboard</span>
+        </a>
+        <a href="attendance.html" class="quick-link">
+            <i class="ph ph-user"></i>
+            <span>Attendance</span>
+        </a>
+        <a href="Employees.html" class="quick-link">
+            <i class="ph ph-user-circle"></i>
+            <span>Employees</span>
+        </a>
+        <a href="payroll.html" class="quick-link">
+            <i class="ph ph-money"></i>
+            <span>Payroll</span>
+        </a>
+        <a href="settings.html" class="quick-link">
+            <i class="ph ph-gear"></i>
+            <span>Settings</span>
+        </a>
+    </nav>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.js"></script>
     <script src="JS%20files/dash.js"></script>

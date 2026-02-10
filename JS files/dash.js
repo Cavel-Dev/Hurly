@@ -104,6 +104,38 @@ $(document).ready(function() {
     const siteSelect = document.getElementById('dashboardSiteSelect');
     const siteClearBtn = document.getElementById('dashboardSiteClear');
 
+    function applyTimeTheme() {
+        document.body.classList.remove('theme-light');
+        document.body.classList.add('theme-dark');
+        document.body.classList.add('dashboard-minimal');
+    }
+
+    function getLocalDateString() {
+        const now = new Date();
+        const offsetMs = now.getTimezoneOffset() * 60000;
+        return new Date(now.getTime() - offsetMs).toISOString().split('T')[0];
+    }
+
+    function getDisplayName() {
+        try {
+            const session = JSON.parse(localStorage.getItem('huly_session') || 'null');
+            if (session?.name) return session.name;
+        } catch (e) {}
+        try {
+            const settingsRaw = localStorage.getItem('huly_settings');
+            if (settingsRaw) {
+                const settings = JSON.parse(settingsRaw);
+                if (settings?.profile?.name) return settings.profile.name;
+                if (settings?.company?.owner) return settings.company.owner;
+            }
+        } catch (e) {}
+        return 'cavelellis102';
+    }
+
+    function getDailyGreeting(name) {
+        return `Hey ${name}, ready to roll?`;
+    }
+
     async function populateDashboardSites() {
         if (!siteSelect || !window.db) return;
         const sites = await window.db.getSites();
@@ -162,21 +194,13 @@ $(document).ready(function() {
         isUpdating = true;
         const welcomeTitle = document.getElementById('welcomeTitle');
         if (welcomeTitle) {
-            let name = 'Administrator';
-            try {
-                const settingsRaw = localStorage.getItem('huly_settings');
-                if (settingsRaw) {
-                    const settings = JSON.parse(settingsRaw);
-                    if (settings?.company?.name) name = settings.company.name;
-                }
-            } catch (e) {}
-            welcomeTitle.textContent = `Welcome, ${name}`;
+            const name = getDisplayName();
+            welcomeTitle.textContent = getDailyGreeting(name);
         }
 
         const datePill = document.getElementById('dashboardDate');
         if (datePill) {
-            const now = new Date();
-            const dateText = now.toLocaleDateString('en-US', {
+            const dateText = new Date(getLocalDateString() + 'T00:00:00').toLocaleDateString('en-US', {
                 weekday: 'long',
                 month: 'short',
                 day: 'numeric'
@@ -189,7 +213,7 @@ $(document).ready(function() {
             return;
         }
 
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDateString();
         const [employees, attendance, payrollRuns, sites] = await Promise.all([
             window.db.getEmployees(),
             window.db.getAttendance(),
@@ -456,8 +480,10 @@ function updateRecentActivity(employeeList, attendanceList, payrollList) {
     }
 
     populateDashboardSites();
+    applyTimeTheme();
     updateDashboardSnapshot();
     setInterval(updateDashboardSnapshot, 1000);
+    setInterval(applyTimeTheme, 5 * 60 * 1000);
 });
 
 

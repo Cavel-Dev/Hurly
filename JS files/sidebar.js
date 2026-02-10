@@ -182,7 +182,7 @@ $(document).ready(function() {
         if (!head) return;
         const userImg = head.querySelector('.user-img img');
         if (userImg) {
-            userImg.src = 'Assets/image.png';
+            userImg.src = 'Assets/38289049-9B95-4A34-A18A-E69D09B8D668-removebg-preview.png';
             userImg.alt = 'Logo';
         }
     }
@@ -203,7 +203,7 @@ $(document).ready(function() {
         const head = document.querySelector('.head');
         const userImg = head ? head.querySelector('.user-img img') : null;
         if (userImg) {
-            userImg.src = 'Assets/image.png';
+            userImg.src = 'Assets/38289049-9B95-4A34-A18A-E69D09B8D668-removebg-preview.png';
             userImg.alt = 'Logo';
         }
     });

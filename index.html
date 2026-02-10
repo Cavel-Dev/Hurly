@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign in to Hurly</title>
-    <link rel="icon" type="image/png" href="Assets/image.png">
-    <link rel="apple-touch-icon" href="Assets/image.png">
+    <link rel="icon" type="image/png" href="Assets/38289049-9B95-4A34-A18A-E69D09B8D668-removebg-preview.png">
+    <link rel="apple-touch-icon" href="Assets/38289049-9B95-4A34-A18A-E69D09B8D668-removebg-preview.png">
 
     <link rel="stylesheet" href="CSS/style.css">
     <link rel="stylesheet" href="CSS/login.css">
 </head>
 <body data-auth-check="off">
+    <div class="login-bg solid-bg"></div>
     <div class="auth-overlay" id="authOverlay" aria-hidden="true">
         <div class="auth-panel" role="status" aria-live="polite">
             <div class="auth-orb"></div>
@@ -22,12 +23,11 @@
 
     <div class="cursor-hover" id="cursorHover"></div>
 
-    <div class="container">
-        <div class="login-card">
-            <div class="logo">
-                <img src="Assets/image.png" alt="Logo">
+    <div class="login-shell">
+        <div class="login-card dark-card">
+            <div class="login-logo">
+                <img src="Assets/38289049-9B95-4A34-A18A-E69D09B8D668-removebg-preview.png" alt="Hurly logo">
             </div>
-
             <h1>Sign in to Hurly</h1>
 
             <form>
@@ -41,15 +41,11 @@
                     <input type="password" id="password" placeholder="Enter your password">
                 </div>
 
-                <button type="submit" class="login-button">Log In</button>
+                <button type="submit" class="login-button primary">Log In</button>
             </form>
-            <div class="mfa-setup-link">
-                <a href="reset.html" class="reset-link">Forgot your password?</a>
-            </div>
 
-            <div class="mfa-setup-link">
-                <button type="button" id="startMfaSetupBtn">First time? Set up security</button>
-            </div>
+            <a href="reset.html" class="reset-link center-link">Forgot your password?</a>
+            <button type="button" class="setup-link" id="startMfaSetupBtn">First time? Set up security</button>
 
             <div class="footer">
                 <a href="#" id="termsLink">Terms of Use</a>
@@ -124,6 +120,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
     <script src="JS%20files/script.js"></script>
     <script src="JS%20files/authOverlay.js"></script>
 </body>

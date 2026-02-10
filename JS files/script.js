@@ -81,12 +81,15 @@ if (!window.SUPABASE_ANON_KEY) window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 
 function loadSupabase() {
     return new Promise((resolve) => {
+        const timeout = setTimeout(() => resolve(null), 5000);
         if (window.__supabaseClient) {
+            clearTimeout(timeout);
             resolve(window.__supabaseClient);
             return;
         }
         if (window.supabase && window.supabase.createClient) {
             window.__supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            clearTimeout(timeout);
             resolve(window.__supabaseClient);
             return;
         }
@@ -95,12 +98,17 @@ function loadSupabase() {
         script.onload = () => {
             if (window.supabase && window.supabase.createClient) {
                 window.__supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                clearTimeout(timeout);
                 resolve(window.__supabaseClient);
             } else {
+                clearTimeout(timeout);
                 resolve(null);
             }
         };
-        script.onerror = () => resolve(null);
+        script.onerror = () => {
+            clearTimeout(timeout);
+            resolve(null);
+        };
         document.head.appendChild(script);
     });
 }

@@ -450,7 +450,7 @@ class Reports {
           <div>
             <div style="display:flex;align-items:center;gap:10px;">
               <div style="font-size:20px;font-weight:700;">Payroll Report</div>
-              <img src="Assets/image.png" alt="Logo" style="height:28px;width:auto;object-fit:contain;">
+              <img src="Assets/38289049-9B95-4A34-A18A-E69D09B8D668-removebg-preview.png" alt="Logo" style="height:28px;width:auto;object-fit:contain;">
             </div>
             <div style="font-size:12px;color:#444;">${this.escapeHtml(periodText)}</div>
           </div>

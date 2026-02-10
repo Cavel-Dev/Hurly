@@ -5,6 +5,15 @@ if (!window.SUPABASE_URL) window.SUPABASE_URL = SUPABASE_URL;
 if (!window.SUPABASE_ANON_KEY) window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 let pendingBadgeState = null;
 
+function normalizeDateValue(value) {
+  if (!value) return '';
+  const str = String(value).trim();
+  if (!str) return '';
+  if (str.includes('T')) return str.split('T')[0];
+  if (str.includes(' ')) return str.split(' ')[0];
+  return str;
+}
+
 function createConnectionBadge() {
   let badge = document.getElementById('connectionBadge');
   if (badge) return badge;
@@ -556,13 +565,14 @@ class DatabaseService {
   async getAttendance(filters = {}) {
     try {
       const activeSite = filters.siteId || getActiveSiteId();
+      const normalizedDate = normalizeDateValue(filters.date);
       const cached = this.getLocalTable('attendance');
       if (cached && cached.length) {
         this.syncTable('attendance');
         let filtered = cached;
-        if (filters.date) filtered = filtered.filter(a => {
-          const d = a.date || a.Date || '';
-          return d === filters.date || d.startsWith(filters.date);
+        if (normalizedDate) filtered = filtered.filter(a => {
+          const d = normalizeDateValue(a.date || a.Date || '');
+          return d === normalizedDate;
         });
         if (activeSite) {
           filtered = filtered.filter(a => !a.site_id || a.site_id === '' || (a.site_id || a.Worksite) === activeSite);
@@ -576,7 +586,7 @@ class DatabaseService {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
         let query = sb.from('attendance').select('*');
-        if (filters.date) query = query.eq('date', filters.date);
+        if (normalizedDate) query = query.eq('date', normalizedDate);
         if (activeSite) query = query.or(`site_id.eq.${activeSite},site_id.is.null,site_id.eq.`);
         if (filters.employeeId) query = query.eq('employee_id', String(filters.employeeId));
         const { data, error } = await query.order('created_at', { ascending: false });
@@ -595,7 +605,7 @@ class DatabaseService {
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
-        const dateStr = typeof attendanceData.date === 'string' ? attendanceData.date : '';
+        const dateStr = normalizeDateValue(attendanceData.date);
         const isDateValid = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
         const toIso = (timeValue) => {
           if (!isDateValid || typeof timeValue !== 'string') return null;
@@ -615,7 +625,7 @@ class DatabaseService {
           id: this.generateId(),
           employee_id: attendanceData.employee_id,
           employee_name: attendanceData.employee_name,
-          date: attendanceData.date,
+          date: dateStr || attendanceData.date,
           status: attendanceData.status,
           site_id: attendanceData.site_id || '',
           created_at: new Date().toISOString(),
@@ -634,7 +644,7 @@ class DatabaseService {
         id: this.generateId(),
         employee_id: attendanceData.employee_id,
         employee_name: attendanceData.employee_name,
-        date: attendanceData.date,
+        date: normalizeDateValue(attendanceData.date) || attendanceData.date,
         status: attendanceData.status,
         site_id: attendanceData.site_id || '',
         created_at: new Date().toISOString(),
@@ -656,7 +666,7 @@ class DatabaseService {
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
-        const dateStr = typeof attendanceData.date === 'string' ? attendanceData.date : '';
+        const dateStr = normalizeDateValue(attendanceData.date);
         const isDateValid = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
         const toIso = (timeValue) => {
           if (!isDateValid || typeof timeValue !== 'string') return null;
