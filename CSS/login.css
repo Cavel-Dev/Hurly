@@ -14,6 +14,7 @@ body {
     justify-content: center;
     align-items: center;
     color: #f7f7f7;
+    overflow-y: auto;
 }
 
 body::before {
@@ -44,7 +45,7 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 56px 24px;
+    padding: 56px 24px 72px;
 }
 
 .login-card {
@@ -58,8 +59,8 @@ body::before {
 }
 
 .login-logo {
-    width: 86px;
-    height: 86px;
+    width: 74px;
+    height: 74px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -69,8 +70,8 @@ body::before {
 }
 
 .login-logo img {
-    width: 42px;
-    height: 42px;
+    width: 36px;
+    height: 36px;
     filter: none;
 }
 
