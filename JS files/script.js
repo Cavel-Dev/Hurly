@@ -604,6 +604,7 @@ async function reenrollMfa() {
                 name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
                 loginAt: new Date().toISOString()
             }));
+            localStorage.removeItem('huly_demo_mode');
             logAudit('login', { email: user.email, role: user.user_metadata?.role || 'user' });
             showLoginSuccess('Login successful');
             setTimeout(() => {

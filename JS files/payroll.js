@@ -87,16 +87,39 @@ class Payroll {
     const cleaned = label.replace(/\(.*?\)/g, '').trim();
     const parts = cleaned.split('-').map(p => p.trim());
     if (parts.length < 2) return null;
-    const start = new Date(parts[0]);
     const end = new Date(parts[1]);
+    if (Number.isNaN(end.getTime())) return null;
+    let start = new Date(parts[0]);
+    if (Number.isNaN(start.getTime())) return null;
+
+    // If start was provided without year (e.g. "Jan 1"), inherit end year.
+    if (!/\b\d{4}\b/.test(parts[0])) {
+      start = new Date(`${parts[0]}, ${end.getFullYear()}`);
+      if (Number.isNaN(start.getTime())) return null;
+      // Handle cross-year ranges like "Dec 16 - Jan 15, 2026"
+      if (start.getMonth() > end.getMonth()) {
+        start.setFullYear(end.getFullYear() - 1);
+      }
+    }
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+    // Include full end day
+    end.setHours(23, 59, 59, 999);
     return { start, end };
   }
 
   async getAttendanceDays(employeeId, start, end) {
-    if (!this.db || typeof this.db.getAttendance !== 'function') return 0;
+    const summary = await this.getAttendancePayrollSummary(employeeId, start, end);
+    return summary.daysWorked;
+  }
+
+  async getAttendancePayrollSummary(employeeId, start, end) {
+    if (!this.db || typeof this.db.getAttendance !== 'function') {
+      return { daysWorked: 0, overtimeHours: 0 };
+    }
     const records = await this.db.getAttendance();
     const days = new Set();
+    const { threshold } = this.getOvertimeConfig();
+    let overtimeHours = 0;
     records.forEach((rec) => {
       const id = rec.employee_id || rec.employee_ID;
       if (String(id) !== String(employeeId)) return;
@@ -108,9 +131,25 @@ class Payroll {
       if (Number.isNaN(d.getTime())) return;
       if (d >= start && d <= end) {
         days.add(d.toISOString().split('T')[0]);
+        const notes = String(rec.notes || '').toLowerCase();
+        const hoursNum = parseFloat(rec.hours ?? '0');
+        let rowOt = 0;
+        const noteMatch = notes.match(/overtime\s*:\s*([0-9]+(?:\.[0-9]+)?)/i);
+        const parsedFromNotes = noteMatch ? parseFloat(noteMatch[1]) : 0;
+        if (Number.isFinite(hoursNum) && hoursNum > 0) {
+          if (notes.includes('overtime') && hoursNum <= threshold) {
+            rowOt = hoursNum;
+          } else if (hoursNum > threshold) {
+            rowOt = hoursNum - threshold;
+          }
+        }
+        overtimeHours += Math.max(0, rowOt, Number.isFinite(parsedFromNotes) ? parsedFromNotes : 0);
       }
     });
-    return days.size;
+    return {
+      daysWorked: days.size,
+      overtimeHours: Math.round(overtimeHours * 100) / 100
+    };
   }
 
   getCurrentPayPeriodRange(date = new Date()) {
@@ -399,7 +438,7 @@ class Payroll {
                       <th>OT Hours</th>
                       <th>Bonus</th>
                       <th>Deduction</th>
-                      <th>Total</th>
+                      <th>Total (Edit)</th>
                     </tr>
                   </thead>
                   <tbody id="payrollEmployeesBody">
@@ -433,7 +472,13 @@ class Payroll {
                         <td><input type="number" class="emp-ot" data-id="${emp.id}" min="0" step="0.25" value="0"></td>
                         <td><input type="number" class="emp-bonus" data-id="${emp.id}" min="0" step="0.01" value="0"></td>
                         <td><input type="number" class="emp-deduction" data-id="${emp.id}" min="0" step="0.01" value="0"></td>
-                        <td class="emp-total" data-id="${emp.id}">0</td>
+                        <td>
+                          <label class="inline-muted" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                            <input type="checkbox" class="emp-total-override" data-id="${emp.id}">
+                            Edit
+                          </label>
+                          <input type="text" class="emp-total-input" data-id="${emp.id}" value="${this.formatCurrency(0)}" readonly>
+                        </td>
                       </tr>
                     `).join('')}
                   </tbody>
@@ -467,7 +512,7 @@ class Payroll {
                       <th>OT Hours</th>
                       <th>Bonus</th>
                       <th>Deduction</th>
-                      <th>Total</th>
+                      <th>Total (Edit)</th>
                       <th>Status</th>
                       <th></th>
                     </tr>
@@ -481,7 +526,7 @@ class Payroll {
           <div class="modal-section form-grid">
             <div class="form-stack">
               <label>Estimated Total</label>
-              <input type="number" id="totalInput" value="0" min="0" readonly>
+              <input type="text" id="totalInput" value="${this.formatCurrency(0)}" readonly>
             </div>
             <div class="form-stack">
               <label>Status</label>
@@ -509,8 +554,10 @@ class Payroll {
       const dayInputs = Array.from(modal.querySelectorAll('.emp-days'));
       for (const input of dayInputs) {
         const empId = input.getAttribute('data-id');
-        const days = await this.getAttendanceDays(empId, start, end);
-        input.value = days;
+        const summary = await this.getAttendancePayrollSummary(empId, start, end);
+        input.value = summary.daysWorked;
+        const otInput = modal.querySelector(`.emp-ot[data-id="${empId}"]`);
+        if (otInput) otInput.value = summary.overtimeHours;
       }
     }
 
@@ -547,6 +594,45 @@ class Payroll {
     const employeeOptions = (employees || [])
       .map((e) => `<option value="${e.id}">${this.escapeHtml(e.name || e.employee_name || 'Unknown')}</option>`)
       .join('');
+    const payPeriodInputEl = document.getElementById('payPeriodInput');
+    const resolveActivePeriodRange = () => {
+      const typed = String(payPeriodInputEl?.value || '').trim();
+      return this.parsePayPeriodDates(typed) || periodRange;
+    };
+
+    const autofillManualRowFromAttendance = async (row) => {
+      if (!row) return;
+      const employeeId = row.querySelector('.manual-employee')?.value || '';
+      if (!employeeId) return;
+      const range = resolveActivePeriodRange();
+      if (!range?.start || !range?.end) return;
+      const summary = await this.getAttendancePayrollSummary(employeeId, range.start, range.end);
+      const daysInput = row.querySelector('.manual-days');
+      const otInput = row.querySelector('.manual-ot');
+      if (daysInput) daysInput.value = summary.daysWorked;
+      if (otInput) otInput.value = summary.overtimeHours;
+    };
+
+    const autofillAllManualRowsFromAttendance = async () => {
+      const rows = Array.from(document.querySelectorAll('#manualEntriesBody .manual-row'));
+      for (const row of rows) {
+        await autofillManualRowFromAttendance(row);
+      }
+    };
+
+    const autofillAllAutoRowsFromAttendance = async () => {
+      const range = resolveActivePeriodRange();
+      if (!range?.start || !range?.end) return;
+      const dayInputs = Array.from(modal.querySelectorAll('.emp-days'));
+      for (const input of dayInputs) {
+        const empId = input.getAttribute('data-id');
+        if (!empId) continue;
+        const summary = await this.getAttendancePayrollSummary(empId, range.start, range.end);
+        input.value = summary.daysWorked;
+        const otInput = modal.querySelector(`.emp-ot[data-id="${empId}"]`);
+        if (otInput) otInput.value = summary.overtimeHours;
+      }
+    };
 
     const addManualRow = (row = {}) => {
       const tbody = document.getElementById('manualEntriesBody');
@@ -578,7 +664,13 @@ class Payroll {
         <td><input type="number" class="manual-ot" min="0" step="0.25" value="${row.overtime_hours || 0}"></td>
         <td><input type="number" class="manual-bonus" min="0" step="0.01" value="${row.bonus || 0}"></td>
         <td><input type="number" class="manual-deduction" min="0" step="0.01" value="${row.deduction || 0}"></td>
-        <td><input type="number" class="manual-total" min="0" step="0.01" value="${row.total || 0}" readonly></td>
+        <td>
+          <label class="inline-muted" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <input type="checkbox" class="manual-total-override">
+            Edit
+          </label>
+          <input type="text" class="manual-total" value="${this.formatCurrency(row.total || 0)}" readonly>
+        </td>
         <td>
           <select class="manual-status">
             <option value="Pending">Pending</option>
@@ -594,7 +686,7 @@ class Payroll {
 
     const manualEntriesBody = document.getElementById('manualEntriesBody');
     if (manualEntriesBody) {
-      manualEntriesBody.addEventListener('input', (e) => {
+      manualEntriesBody.addEventListener('input', async (e) => {
         const row = e.target.closest('.manual-row');
         if (!row) return;
         if (e.target.classList.contains('manual-task') || e.target.classList.contains('manual-shift')) {
@@ -604,9 +696,12 @@ class Payroll {
             row.querySelector('.manual-rate').value = this.getRateForTask(taskId, shift);
           }
         }
+        if (e.target.classList.contains('manual-employee')) {
+          await autofillManualRowFromAttendance(row);
+        }
         computeTotals();
       });
-      manualEntriesBody.addEventListener('change', (e) => {
+      manualEntriesBody.addEventListener('change', async (e) => {
         const row = e.target.closest('.manual-row');
         if (row) {
           if (e.target.classList.contains('manual-task') || e.target.classList.contains('manual-shift')) {
@@ -615,6 +710,9 @@ class Payroll {
             if (taskId) {
               row.querySelector('.manual-rate').value = this.getRateForTask(taskId, shift);
             }
+          }
+          if (e.target.classList.contains('manual-employee')) {
+            await autofillManualRowFromAttendance(row);
           }
         }
         computeTotals();
@@ -625,6 +723,17 @@ class Payroll {
           btn.closest('tr')?.remove();
           computeTotals();
         }
+      });
+      manualEntriesBody.addEventListener('change', (e) => {
+        if (!e.target.classList.contains('manual-total-override')) return;
+        if (e.target.checked) {
+          const ok = confirm('You are about to edit this row total manually. This can change payroll payout. Continue?');
+          if (!ok) {
+            e.target.checked = false;
+            return;
+          }
+        }
+        computeTotals();
       });
     }
 
@@ -651,7 +760,8 @@ class Payroll {
         const overtimeInput = modal.querySelector(`.emp-ot[data-id="${id}"]`);
         const bonusInput = modal.querySelector(`.emp-bonus[data-id="${id}"]`);
         const deductionInput = modal.querySelector(`.emp-deduction[data-id="${id}"]`);
-        const totalCell = modal.querySelector(`.emp-total[data-id="${id}"]`);
+        const totalInput = modal.querySelector(`.emp-total-input[data-id="${id}"]`);
+        const totalOverride = modal.querySelector(`.emp-total-override[data-id="${id}"]`);
 
         const taskId = taskSelect?.value || '';
         const shift = shiftSelect?.value || 'Day';
@@ -672,10 +782,19 @@ class Payroll {
         const deduction = parseFloat(deductionInput?.value || '0') || 0;
         const overtimeTotal = overtimeHours * hourlyRate * multiplier;
         const base = overrideEnabled ? overrideAmount : qty * rate;
-        const rowTotal = base + overtimeTotal + bonus - deduction;
+        const calculatedTotal = Math.round((base + overtimeTotal + bonus - deduction) * 100) / 100;
+        const rowTotal = totalOverride?.checked
+          ? this.parseMoney(totalInput?.value || '0')
+          : calculatedTotal;
 
         if (rateInput) rateInput.value = overrideEnabled ? 'Manual' : this.formatCurrency(rate);
-        if (totalCell) totalCell.textContent = this.formatCurrency(rowTotal);
+        if (totalInput && !totalOverride?.checked) {
+          totalInput.readOnly = true;
+          totalInput.value = this.formatCurrency(calculatedTotal);
+        }
+        if (totalInput && totalOverride?.checked) {
+          totalInput.readOnly = false;
+        }
         if (sel.checked) {
           selectedCount += 1;
           totalQty += qty;
@@ -688,7 +807,7 @@ class Payroll {
       const totalInput = document.getElementById('totalInput');
       if (selectedCountEl) selectedCountEl.textContent = selectedCount;
       if (totalHoursEl) totalHoursEl.textContent = totalQty.toFixed(2);
-      if (totalInput) totalInput.value = Math.round(totalAmount * 100) / 100;
+      if (totalInput) totalInput.value = this.formatCurrency(Math.round(totalAmount * 100) / 100);
     };
 
     const computeManualTotals = () => {
@@ -704,14 +823,24 @@ class Payroll {
         const bonus = parseFloat(row.querySelector('.manual-bonus')?.value || '0') || 0;
         const deduction = parseFloat(row.querySelector('.manual-deduction')?.value || '0') || 0;
         const overtimeTotal = overtimeHours * hourlyRate * multiplier;
-        const total = Math.round((days * rate + overtimeTotal + bonus - deduction) * 100) / 100;
+        const calculatedTotal = Math.round((days * rate + overtimeTotal + bonus - deduction) * 100) / 100;
         const totalInput = row.querySelector('.manual-total');
-        if (totalInput) totalInput.value = total;
+        const totalOverride = row.querySelector('.manual-total-override');
+        const total = totalOverride?.checked
+          ? this.parseMoney(totalInput?.value || '0')
+          : calculatedTotal;
+        if (totalInput && !totalOverride?.checked) {
+          totalInput.readOnly = true;
+          totalInput.value = this.formatCurrency(calculatedTotal);
+        }
+        if (totalInput && totalOverride?.checked) {
+          totalInput.readOnly = false;
+        }
         totalDays += days;
         totalAmount += total;
       });
       const totalInput = document.getElementById('totalInput');
-      if (totalInput) totalInput.value = Math.round(totalAmount * 100) / 100;
+      if (totalInput) totalInput.value = this.formatCurrency(Math.round(totalAmount * 100) / 100);
       const rowCountEl = document.getElementById('manualRowCount');
       const totalDaysEl = document.getElementById('manualTotalDays');
       if (rowCountEl) rowCountEl.textContent = rows.length;
@@ -727,6 +856,41 @@ class Payroll {
       el.addEventListener('change', computeTotals);
       el.addEventListener('input', computeTotals);
     });
+    modal.querySelectorAll('.emp-total-override').forEach((toggle) => {
+      toggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          const ok = confirm('You are about to edit this row total manually. This can change payroll payout. Continue?');
+          if (!ok) {
+            e.target.checked = false;
+            return;
+          }
+        }
+        computeTotals();
+      });
+    });
+    modal.querySelectorAll('.emp-total-input, .manual-total').forEach((input) => {
+      input.addEventListener('focus', () => {
+        if (input.readOnly) return;
+        input.value = this.parseMoney(input.value).toFixed(2);
+      });
+      input.addEventListener('blur', () => {
+        input.value = this.formatCurrency(this.parseMoney(input.value));
+        computeTotals();
+      });
+    });
+
+    if (payPeriodInputEl) {
+      payPeriodInputEl.addEventListener('change', async () => {
+        await autofillAllAutoRowsFromAttendance();
+        await autofillAllManualRowsFromAttendance();
+        computeTotals();
+      });
+      payPeriodInputEl.addEventListener('blur', async () => {
+        await autofillAllAutoRowsFromAttendance();
+        await autofillAllManualRowsFromAttendance();
+        computeTotals();
+      });
+    }
 
     const selectAllBtn = document.getElementById('selectAllEmployees');
     if (selectAllBtn) {
@@ -743,7 +907,7 @@ class Payroll {
 
     document.getElementById('payrollSave').addEventListener('click', async () => {
       const period = document.getElementById('payPeriodInput').value.trim();
-      const total = parseFloat(document.getElementById('totalInput').value || '0') || 0;
+      const total = this.parseMoney(document.getElementById('totalInput').value || '0');
       const status = document.getElementById('statusInput').value;
 
       if (!period) {
@@ -776,6 +940,11 @@ class Payroll {
           const overtimeRate = this.getHourlyRate() * this.getOvertimeConfig().multiplier;
           const overtimeTotal = Math.round(overtimeHours * overtimeRate * 100) / 100;
           const rowTotal = Math.round(days * rate * 100) / 100;
+          const totalOverridden = Boolean(row.querySelector('.manual-total-override')?.checked);
+          const manualRowTotal = this.parseMoney(row.querySelector('.manual-total')?.value || '0');
+          const finalTotal = totalOverridden
+            ? manualRowTotal
+            : Math.round((rowTotal + overtimeTotal + bonus - deduction) * 100) / 100;
           return {
             employee_id: employeeId,
             employee_name: employeeName,
@@ -793,10 +962,16 @@ class Payroll {
             deduction,
             override: false,
             override_amount: 0,
-            total: Math.round((rowTotal + overtimeTotal + bonus - deduction) * 100) / 100,
+            total: finalTotal,
+            total_overridden: totalOverridden,
             status: row.querySelector('.manual-status')?.value || 'Pending'
           };
         });
+        const totalOvertimeHours = entries.reduce((sum, entry) => sum + (parseFloat(entry.overtime_hours || 0) || 0), 0);
+        if (totalOvertimeHours > 0) {
+          const ok = confirm(`Reminder: ${totalOvertimeHours.toFixed(2)} overtime hours will be added to pay. Continue?`);
+          if (!ok) return;
+        }
 
         const totalHours = entries.reduce((sum, e) => sum + (e.days || 0), 0);
         await this.createPayrollRun({
@@ -807,6 +982,9 @@ class Payroll {
           status,
           entries
         });
+        if (totalOvertimeHours > 0) {
+          notify(`Payroll created with overtime included (${totalOvertimeHours.toFixed(2)} hrs).`, 'warn');
+        }
       } else {
         const selectedIds = Array.from(modal.querySelectorAll('.emp-select:checked'))
           .map((el) => el.getAttribute('data-id'))
@@ -838,7 +1016,11 @@ class Payroll {
           const overtimeRate = this.getHourlyRate() * this.getOvertimeConfig().multiplier;
           const overtimeTotal = Math.round(overtimeHours * overtimeRate * 100) / 100;
           const base = overrideEnabled ? overrideAmount : Math.round(qty * rate * 100) / 100;
-          const total = Math.round((base + overtimeTotal + bonus - deduction) * 100) / 100;
+          const totalOverridden = Boolean(modal.querySelector(`.emp-total-override[data-id="${id}"]`)?.checked);
+          const manualRowTotal = this.parseMoney(modal.querySelector(`.emp-total-input[data-id="${id}"]`)?.value || '0');
+          const total = totalOverridden
+            ? manualRowTotal
+            : Math.round((base + overtimeTotal + bonus - deduction) * 100) / 100;
           return {
             employee_id: id,
             employee_name: emp?.name || emp?.employee_name || 'N/A',
@@ -857,9 +1039,15 @@ class Payroll {
             override: overrideEnabled,
             override_amount: overrideAmount,
             total,
+            total_overridden: totalOverridden,
             status: modal.querySelector(`.emp-status[data-id="${id}"]`)?.value || 'Pending'
           };
         });
+        const totalOvertimeHours = entries.reduce((sum, entry) => sum + (parseFloat(entry.overtime_hours || 0) || 0), 0);
+        if (totalOvertimeHours > 0) {
+          const ok = confirm(`Reminder: ${totalOvertimeHours.toFixed(2)} overtime hours will be added to pay. Continue?`);
+          if (!ok) return;
+        }
 
         const totalHours = entries.reduce((sum, e) => sum + (e.days || 0), 0);
         await this.createPayrollRun({
@@ -871,6 +1059,9 @@ class Payroll {
           status,
           entries
         });
+        if (totalOvertimeHours > 0) {
+          notify(`Payroll created with overtime included (${totalOvertimeHours.toFixed(2)} hrs).`, 'warn');
+        }
       }
 
       close();
@@ -1278,6 +1469,12 @@ class Payroll {
 
   formatCurrency(value) {
     return new Intl.NumberFormat('en-JM', { style: 'currency', currency: 'JMD' }).format(value || 0);
+  }
+
+  parseMoney(value) {
+    const cleaned = String(value ?? '').replace(/[^0-9.-]/g, '');
+    const parsed = parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   formatDate(dateValue) {

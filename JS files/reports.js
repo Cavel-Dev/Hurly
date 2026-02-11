@@ -334,13 +334,18 @@ class Reports {
         total_paid: this.formatCurrency(this.getTotals().paid),
         total_pending: this.formatCurrency(this.getTotals().pending)
       };
+      const session = await sb.auth.getSession();
+      const accessToken = session?.data?.session?.access_token || '';
+      if (!accessToken) {
+        notify('Session expired. Please sign in again.', 'warn');
+        return;
+      }
 
       const res = await fetch(`${base}/notify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${window.SUPABASE_ANON_KEY || ''}`,
-          'apikey': window.SUPABASE_ANON_KEY || ''
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify(body)
       });

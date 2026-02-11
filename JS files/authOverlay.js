@@ -51,6 +51,110 @@
         hide: hideAuth
     };
 
+    function isDemoMode() {
+        try {
+            return localStorage.getItem('huly_demo_mode') === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function isDemoQueryEnabled() {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('demo') === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function enableDemoSession() {
+        localStorage.setItem('huly_demo_mode', 'true');
+        localStorage.setItem(SESSION_KEY, JSON.stringify({
+            id: 'demo-user',
+            email: 'demo@hurly.local',
+            role: 'demo',
+            name: 'Demo Guest',
+            loginAt: new Date().toISOString()
+        }));
+    }
+
+    function getFunctionsBase() {
+        try {
+            const url = window.SUPABASE_URL || SUPABASE_URL;
+            const origin = new URL(url).origin;
+            return `${origin}/functions/v1`;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function promptDemoCode() {
+        return new Promise((resolve) => {
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:7000;padding:16px;';
+            wrapper.innerHTML = `
+                <div style="width:min(420px,95vw);background:#101010;border:1px solid #262626;border-radius:14px;padding:18px;">
+                    <div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:8px;">Demo Access</div>
+                    <div style="color:#b5b5b5;font-size:0.92rem;margin-bottom:12px;">Enter your MFA/admin code to open guest demo mode.</div>
+                    <input id="demoCodeInput" type="password" placeholder="Enter code" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2a2a2a;background:#0b0b0b;color:#fff;">
+                    <div style="display:flex;gap:10px;margin-top:14px;">
+                        <button id="demoCodeCancel" style="flex:1;padding:10px;border-radius:10px;border:1px solid #2a2a2a;background:#121212;color:#fff;cursor:pointer;">Cancel</button>
+                        <button id="demoCodeVerify" style="flex:1;padding:10px;border-radius:10px;border:none;background:#fff;color:#000;font-weight:700;cursor:pointer;">Verify</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(wrapper);
+            const input = wrapper.querySelector('#demoCodeInput');
+            const cancelBtn = wrapper.querySelector('#demoCodeCancel');
+            const verifyBtn = wrapper.querySelector('#demoCodeVerify');
+            const cleanup = (value) => {
+                wrapper.remove();
+                resolve(value);
+            };
+            cancelBtn?.addEventListener('click', () => cleanup(null));
+            verifyBtn?.addEventListener('click', () => cleanup(String(input?.value || '').trim()));
+            input?.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') cleanup(String(input?.value || '').trim());
+            });
+            input?.focus();
+        });
+    }
+
+    async function validateDemoCode(code) {
+        const base = getFunctionsBase();
+        if (!base || !code) return false;
+        try {
+            const res = await fetch(`${base}/mfa-setup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${window.SUPABASE_ANON_KEY || SUPABASE_ANON_KEY}`
+                },
+                body: JSON.stringify({
+                    action: 'check_admin',
+                    email: 'demo@hurly.local',
+                    code
+                })
+            });
+            return res.ok;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function applyDemoBanner() {
+        if (!isDemoMode()) return;
+        if (document.getElementById('demoModeBanner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'demoModeBanner';
+        banner.style.cssText = 'position:fixed;bottom:14px;left:14px;z-index:9999;background:#111;border:1px solid #333;color:#fff;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:600;';
+        banner.textContent = 'Demo Mode: Read-only';
+        document.body.appendChild(banner);
+    }
+
+    window.isDemoMode = isDemoMode;
+
     window.addEventListener('auth:loading', (event) => {
         if (event.detail && event.detail.state === 'start') {
             showAuth('Authenticating', 'Verifying secure session with Supabase. Please wait.');
@@ -104,8 +208,44 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        const wantsDemo = isDemoQueryEnabled();
         const autoCheck = document.body && document.body.dataset && document.body.dataset.authCheck;
         if (autoCheck === 'off') return;
+        if (wantsDemo || isDemoMode()) {
+            (async () => {
+                if (isDemoMode()) {
+                    hideAuth();
+                    applyDemoBanner();
+                    return;
+                }
+                showAuth('Demo Access', 'Verifying guest demo code.');
+                const code = await promptDemoCode();
+                if (!code) {
+                    localStorage.removeItem('huly_demo_mode');
+                    localStorage.removeItem(SESSION_KEY);
+                    hideAuth();
+                    window.location.href = 'index.html';
+                    return;
+                }
+                const ok = await validateDemoCode(code);
+                if (!ok) {
+                    localStorage.removeItem('huly_demo_mode');
+                    localStorage.removeItem(SESSION_KEY);
+                    hideAuth();
+                    if (window.app && typeof window.app.showToast === 'function') {
+                        window.app.showToast('Invalid demo MFA code.', 'error');
+                    } else {
+                        alert('Invalid demo MFA code.');
+                    }
+                    window.location.href = 'index.html';
+                    return;
+                }
+                enableDemoSession();
+                hideAuth();
+                applyDemoBanner();
+            })();
+            return;
+        }
         const path = window.location.pathname.toLowerCase();
         const isSettings = path.endsWith('/settings.html') || path.endsWith('settings.html');
         if (isSettings && localStorage.getItem('huly_mfa_setup_pending')) {
@@ -114,7 +254,7 @@
         }
         const localSession = localStorage.getItem(SESSION_KEY);
         if (!localSession) {
-            window.location.href = 'login.html';
+            window.location.href = 'index.html';
             return;
         }
 
@@ -159,7 +299,7 @@
                 if (window.app && typeof window.app.showToast === 'function') {
                     window.app.showToast('You were logged out after 1 hour of inactivity.', 'warn');
                 }
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             }, 30000);
         }
 
@@ -182,7 +322,7 @@
                     if (window.app && typeof window.app.showToast === 'function') {
                         window.app.showToast('Supabase failed to load. Refresh or log in again.', 'error');
                     } else {
-                        window.location.href = 'login.html';
+                        window.location.href = 'index.html';
                     }
                     return;
                 }
@@ -194,7 +334,7 @@
                     if (window.app && typeof window.app.showToast === 'function') {
                         window.app.showToast('No active session. Please log in again.', 'warn');
                     } else {
-                        window.location.href = 'login.html';
+                        window.location.href = 'index.html';
                     }
                     return;
                 }
@@ -215,7 +355,7 @@
                     if (window.app && typeof window.app.showToast === 'function') {
                         window.app.showToast('MFA required. Please log in again.', 'warn');
                     } else {
-                        window.location.href = 'login.html';
+                        window.location.href = 'index.html';
                     }
                     return;
                 }
@@ -239,9 +379,10 @@
                 if (window.app && typeof window.app.showToast === 'function') {
                     window.app.showToast('Authentication failed. Please log in again.', 'error');
                 } else {
-                    window.location.href = 'login.html';
+                    window.location.href = 'index.html';
                 }
             }
         })();
     });
 })();
+

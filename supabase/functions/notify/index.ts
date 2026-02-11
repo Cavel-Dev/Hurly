@@ -1,14 +1,18 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "";
 const ALERT_RECIPIENT = Deno.env.get("ALERT_RECIPIENT") ?? "";
 const PAYRUN_RECIPIENT = Deno.env.get("PAYRUN_RECIPIENT") ?? "cavelellis103@gmail.com";
+const OVERTIME_RECIPIENT = Deno.env.get("OVERTIME_RECIPIENT") ?? "cavelellis103@gmail.com";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 const allowedOriginsRaw = Deno.env.get("ALLOWED_ORIGINS") ?? "*";
 const allowedOrigins = allowedOriginsRaw
   .split(",")
-  .map((origin) => origin.trim())
+ttp://127.0.0.1:5500,https://your-  .map((origin) => origin.trim())
   .filter(Boolean);
 
 function resolveCorsOrigin(origin: string | null) {
@@ -47,7 +51,8 @@ async function sendEmail(opts: {
   if (!RESEND_API_KEY || !RESEND_FROM || !opts.to) {
     return new Response("Missing email config", { status: 500, headers: corsHeaders(null) });
   }
-  const res = await fetch("https://api.resend.com/emails", {
+  const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
+  const primaryRes = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${RESEND_API_KEY}`,
@@ -55,7 +60,7 @@ async function sendEmail(opts: {
     },
     body: JSON.stringify({
       from: RESEND_FROM,
-      to: Array.isArray(opts.to) ? opts.to : [opts.to],
+      to: recipients,
       subject: opts.subject,
       template: {
         id: TEMPLATE_ID,
@@ -63,10 +68,53 @@ async function sendEmail(opts: {
       },
     }),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error("Resend error:", text || "unknown");
-    return new Response(text || "Resend error", { status: 502, headers: corsHeaders(null) });
+  if (primaryRes.ok) {
+    return new Response("ok", { status: 200, headers: corsHeaders(null) });
+  }
+
+  const primaryErr = await primaryRes.text().catch(() => "");
+  console.error("Resend template send failed:", primaryErr || "unknown");
+
+  const fallbackHtml = `
+    <div style="font-family:Arial,sans-serif;color:#111;line-height:1.5">
+      <h2>${opts.templateData.TITLE}</h2>
+      <p>${opts.templateData.INTRO}</p>
+      <p><strong>Name:</strong> ${opts.templateData.NAME}</p>
+      <p><strong>Table:</strong> ${opts.templateData.TABLE}</p>
+      <p><strong>Record:</strong> ${opts.templateData.RECORD_ID}</p>
+      <p><strong>Status:</strong> ${opts.templateData.STATUS}</p>
+      <p><strong>Total:</strong> ${opts.templateData.TOTAL}</p>
+      <p>${opts.templateData.FOOTER}</p>
+    </div>
+  `;
+  const fallbackText = opts.text || [
+    opts.templateData.TITLE,
+    opts.templateData.INTRO,
+    `Name: ${opts.templateData.NAME}`,
+    `Table: ${opts.templateData.TABLE}`,
+    `Record: ${opts.templateData.RECORD_ID}`,
+    `Status: ${opts.templateData.STATUS}`,
+    `Total: ${opts.templateData.TOTAL}`,
+    opts.templateData.FOOTER,
+  ].join("\n");
+  const fallbackRes = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: RESEND_FROM,
+      to: recipients,
+      subject: opts.subject,
+      html: fallbackHtml,
+      text: fallbackText,
+    }),
+  });
+  if (!fallbackRes.ok) {
+    const fallbackErr = await fallbackRes.text().catch(() => "");
+    console.error("Resend fallback send failed:", fallbackErr || "unknown");
+    return new Response(fallbackErr || primaryErr || "Resend error", { status: 502, headers: corsHeaders(null) });
   }
   return new Response("ok", { status: 200, headers: corsHeaders(null) });
 }
@@ -93,7 +141,28 @@ function baseTemplateData(overrides: Partial<{
   };
 }
 
-serve(async (req) => {
+async function getAuthenticatedUser(req: Request) {
+  const auth = req.headers.get("Authorization") || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  const token = auth.slice("Bearer ".length).trim();
+  const apiKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
+  if (!token || !SUPABASE_URL || !apiKey) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: apiKey,
+      },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") {
     const headers = corsHeaders(origin);
@@ -116,6 +185,19 @@ serve(async (req) => {
   const old = payload?.old_record;
   const to = payload?.to || ALERT_RECIPIENT;
   const toList = Array.isArray(to) ? to : (to ? [to] : []);
+  const protectedEvents = new Set([
+    "client_error",
+    "payroll_report",
+    "attendance_missing",
+    "overtime_added",
+    "attendance_daily_summary",
+  ]);
+  if (protectedEvents.has(String(payload?.event || ""))) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders(origin) });
+    }
+  }
 
   // Client error reports
   if (payload?.event === "client_error") {
@@ -155,6 +237,95 @@ serve(async (req) => {
     });
   }
 
+  if (payload?.event === "attendance_missing") {
+    return await sendEmail({
+      to: toList.length ? toList : ALERT_RECIPIENT,
+      subject: `Hurly Attendance Missing: ${payload?.date || "-"}`,
+      templateData: baseTemplateData({
+        TITLE: "Attendance Missing",
+        INTRO: `No attendance was recorded for ${payload?.date || "today"}${payload?.site ? ` at ${payload.site}` : ""}.`,
+        NAME: "-",
+        TABLE: "attendance",
+        RECORD_ID: payload?.date || "-",
+        STATUS: "Missing",
+        TOTAL: "-",
+        FOOTER: "Hurly Attendance Alert",
+      }),
+      text: `No attendance recorded for ${payload?.date || "today"}${payload?.site ? ` at ${payload.site}` : ""}.`,
+    });
+  }
+
+  if (payload?.event === "overtime_added") {
+    const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+    const overtimeRecipients = Array.from(
+      new Set(
+        [
+          ...(toList.length ? toList : [ALERT_RECIPIENT]),
+          OVERTIME_RECIPIENT,
+        ].filter(Boolean),
+      ),
+    );
+    const names = Array.from(
+      new Set(entries.map((item: any) => String(item?.employee_name || "-")).filter(Boolean)),
+    );
+    const namesLine = names.length ? names.join(", ") : "-";
+    const lines = entries
+      .map((item: any) => `${item?.employee_name || "-"} | ${item?.date || "-"} | OT ${item?.overtime_hours ?? item?.overtimeHours ?? 0}h`)
+      .slice(0, 20);
+    const totalOt = entries.reduce((sum: number, item: any) => {
+      const n = Number(item?.overtime_hours ?? item?.overtimeHours ?? 0);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+    return await sendEmail({
+      to: overtimeRecipients,
+      subject: `Hurly Overtime Alert (${entries.length})`,
+      templateData: baseTemplateData({
+        TITLE: "Overtime Added",
+        INTRO: entries.length
+          ? `Overtime was added for ${namesLine}. (${entries.length} record(s))`
+          : "Overtime was added.",
+        NAME: entries[0]?.employee_name || "-",
+        TABLE: "attendance",
+        RECORD_ID: entries[0]?.date || "-",
+        STATUS: "Overtime",
+        TOTAL: `${totalOt.toFixed(2)} hrs`,
+        FOOTER: lines.join(" | ") || "Hurly Overtime Alert",
+      }),
+      text: lines.length ? lines.join("\n") : "Overtime added.",
+    });
+  }
+
+  if (payload?.event === "attendance_daily_summary") {
+    const flagged = Array.isArray(payload?.flagged) ? payload.flagged : [];
+    const flaggedLines = flagged
+      .map((item: any) => {
+        const hours = Number(item?.hours || 0);
+        const mark = item?.overtime || hours > 8 ? "[OT]" : "";
+        return `${mark} ${item?.employee_name || "-"} (${hours || 0}h)`;
+      })
+      .slice(0, 25);
+    return await sendEmail({
+      to: toList.length ? toList : ALERT_RECIPIENT,
+      subject: `Hurly End-of-Day Summary: ${payload?.date || "-"}`,
+      templateData: baseTemplateData({
+        TITLE: "Attendance End-of-Day Summary",
+        INTRO: `Date: ${payload?.date || "-"} | Records: ${payload?.total_records ?? 0} | Overtime/8h+: ${payload?.overtime_records ?? flagged.length}`,
+        NAME: "-",
+        TABLE: "attendance",
+        RECORD_ID: payload?.date || "-",
+        STATUS: "Summary",
+        TOTAL: String(payload?.total_records ?? 0),
+        FOOTER: flaggedLines.join(" | ") || "No overtime or >8h records.",
+      }),
+      text: [
+        `Date: ${payload?.date || "-"}`,
+        `Records: ${payload?.total_records ?? 0}`,
+        `Overtime/8h+: ${payload?.overtime_records ?? flagged.length}`,
+        flaggedLines.length ? flaggedLines.join("\n") : "No overtime or >8h records.",
+      ].join("\n"),
+    });
+  }
+
   // DB webhook payloads
   if (table && type) {
     if (table === "payroll" && type === "UPDATE" && record?.status === "Final" && old?.status !== "Final") {
@@ -176,28 +347,9 @@ serve(async (req) => {
       });
     }
 
-    if (type === "INSERT") {
-      const name = record?.name || record?.employee_name || "-";
-      const intro =
-        name !== "-"
-          ? `A new ${table} record was created for ${name}.`
-          : `A new ${table} record was created.`;
-      return await sendEmail({
-        to: toList.length ? toList : ALERT_RECIPIENT,
-        subject: `Hurly: New ${table} record`,
-        templateData: baseTemplateData({
-          TITLE: "New Record Added",
-          INTRO: intro,
-          NAME: name,
-          TABLE: table,
-          RECORD_ID: record?.id || "-",
-          STATUS: record?.status || "-",
-          TOTAL: String(record?.total || "-"),
-          FOOTER: "Hurly • Automated Email",
-        }),
-      });
-    }
+    // Generic INSERT alerts are intentionally disabled to reduce alert noise.
   }
 
   return new Response("No action", { status: 200, headers: corsHeaders(origin) });
 });
+

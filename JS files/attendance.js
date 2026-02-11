@@ -78,18 +78,152 @@ class Attendance {
     this.employeeIndex = {};
     this.realtimeChannel = null;
     this.filtersKey = 'huly_attendance_filters';
+    this.summarySentPrefix = 'huly_attendance_summary_sent_';
     this.mfaPrompting = false;
     this.init();
   }
   
   async init() {
     this.setupEventListeners();
+    if (this.isDemoMode()) {
+      ['addWorkerBtn', 'bulkAddAttendanceBtn', 'clockInBtn', 'deleteAttendanceBtn'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.setAttribute('disabled', 'true');
+      });
+    }
     await this.ensureConnected();
     await this.populateSites();
     await this.loadEmployeeIndex();
     this.clearFilters();
     await this.loadAttendanceData(true);
     this.initRealtime();
+  }
+
+  isDemoMode() {
+    try {
+      if (typeof window.isDemoMode === 'function') return window.isDemoMode();
+      return localStorage.getItem('huly_demo_mode') === 'true';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  formatTimeInputValue(value) {
+    if (!value) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    if (/^\d{1,2}:\d{2}$/.test(raw)) return raw;
+    if (/^\d{1,2}:\d{2}:\d{2}$/.test(raw)) return raw.slice(0, 5);
+    const dt = new Date(raw);
+    if (Number.isNaN(dt.getTime())) return '';
+    return dt.toTimeString().slice(0, 5);
+  }
+
+  formatTimeCell(value) {
+    const parsed = this.formatTimeInputValue(value);
+    return parsed || '-';
+  }
+
+  isOvertimeRecord(record) {
+    const hours = Number(record?.hours || 0);
+    const notes = String(record?.notes || '').toLowerCase();
+    return hours > 8 || notes.includes('overtime');
+  }
+
+  async refreshAfterInput() {
+    await this.loadAttendanceData();
+  }
+
+  async sendNotifyEvent(payload) {
+    try {
+      const base = this.getFunctionsBase();
+      if (!base) return false;
+      let accessToken = '';
+      if (this.db && typeof this.db.getSupabase === 'function') {
+        const sb = await this.db.getSupabase();
+        if (sb && sb.auth && typeof sb.auth.getSession === 'function') {
+          const { data } = await sb.auth.getSession();
+          accessToken = data?.session?.access_token || '';
+        }
+      }
+      if (!accessToken) {
+        console.warn('Notify skipped: no active access token');
+        notify('Overtime saved, but notify auth token is missing. Please sign out/in and try again.', 'warn');
+        return false;
+      }
+      const res = await fetch(`${base}/notify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.warn('Notify event rejected', res.status, text);
+        if (res.status === 401) {
+          notify('Overtime saved, but email alert is unauthorized. Please sign in again.', 'warn');
+        } else {
+          notify(`Overtime saved, but email alert failed (${res.status}).`, 'warn');
+        }
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Notify event failed', e);
+      return false;
+    }
+  }
+
+  async notifyOvertimeAdded(entries = []) {
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    const normalized = entries.map((entry) => {
+      const hours = Number(entry.overtimeHours || entry.hours || 0);
+      return {
+        employee_name: entry.employee_name || entry.name || '-',
+        date: normalizeDateValue(entry.date || getLocalDateString()),
+        overtime_hours: hours > 0 ? hours : 0
+      };
+    });
+    const ok = await this.sendNotifyEvent({
+      event: 'overtime_added',
+      entries: normalized
+    });
+    if (!ok && window.app && typeof window.app.showToast === 'function') {
+      window.app.showToast('Overtime saved, but email alert failed. Check Supabase function logs/secrets.', 'warn');
+    }
+  }
+
+  async maybeSendEndOfDaySummary(attendance, dateValue, allDates) {
+    try {
+      if (allDates || this.isDemoMode()) return;
+      const today = getLocalDateString();
+      const targetDate = normalizeDateValue(dateValue || today);
+      if (targetDate !== today) return;
+      const hour = new Date().getHours();
+      if (hour < 18) return;
+      const sentKey = `${this.summarySentPrefix}${targetDate}`;
+      if (localStorage.getItem(sentKey)) return;
+
+      const list = Array.isArray(attendance) ? attendance : [];
+      const flagged = list.filter((row) => this.isOvertimeRecord(row));
+      await this.sendNotifyEvent({
+        event: 'attendance_daily_summary',
+        date: targetDate,
+        total_records: list.length,
+        overtime_records: flagged.length,
+        flagged: flagged.map((row) => ({
+          employee_name: row.employee_name || '-',
+          hours: Number(row.hours || 0),
+          notes: row.notes || '',
+          overtime: this.isOvertimeRecord(row)
+        }))
+      });
+      localStorage.setItem(sentKey, 'true');
+    } catch (e) {
+      console.warn('Daily summary notification failed', e);
+    }
   }
 
 
@@ -154,6 +288,7 @@ class Attendance {
       this.updateDayBadge(allDates ? null : date);
       this.applySearchFilter();
       await this.maybeNotifyMissingAttendance(this.attendanceCache, date, allDates);
+      await this.maybeSendEndOfDaySummary(this.attendanceCache, date, allDates);
       if (withOverlay) this.hideLoading();
     } catch (error) {
       console.error('Error loading attendance:', error);
@@ -392,6 +527,7 @@ class Attendance {
 
   async maybeNotifyMissingAttendance(attendance, dateValue, allDates) {
     try {
+      if (this.isDemoMode()) return;
       if (allDates) return;
       const today = getLocalDateString();
       if (dateValue !== today) return;
@@ -416,19 +552,10 @@ class Attendance {
         window.app.showToast('No attendance recorded for today.', 'warn');
       }
 
-      const base = this.getFunctionsBase();
-      if (!base) return;
-      await fetch(`${base}/notify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${window.SUPABASE_ANON_KEY || ''}`
-        },
-        body: JSON.stringify({
-          event: 'attendance_missing',
-          date: dateValue,
-          site: siteName
-        })
+      await this.sendNotifyEvent({
+        event: 'attendance_missing',
+        date: dateValue,
+        site: siteName
       });
     } catch (e) {
       console.warn('Attendance missing notification failed', e);
@@ -499,13 +626,16 @@ class Attendance {
         const position = this.employeeIndex[String(rec.employee_id)]?.position || '?';
         const time = rec.clock_in || rec.clock_out ? `${rec.clock_in || '--'} - ${rec.clock_out || '--'}` : 'No times logged';
         const hours = rec.hours != null ? `${rec.hours} hrs` : '0 hrs';
+        const notes = String(rec.notes || '').trim() || '-';
+        const overtime = this.isOvertimeRecord(rec);
         return `
-          <div class="drawer-card">
+          <div class="drawer-card ${overtime ? 'drawer-card-overtime' : ''}">
             <strong>${dayLabel}</strong>
             <div class="drawer-meta">Role: ${position}</div>
             <div class="drawer-meta">Status: ${status}</div>
             <div class="drawer-meta">Time: ${time}</div>
-            <div class="drawer-meta">${hours}</div>
+            <div class="drawer-meta">${hours}${overtime ? ' | Overtime' : ''}</div>
+            <div class="drawer-meta">Note: ${notes}</div>
           </div>
         `;
       }).join('');
@@ -571,6 +701,11 @@ class Attendance {
       const statusBadgeClass = record.status === 'present' ? 'badge-success' : record.status === 'absent' ? 'badge-danger' : 'badge-warning';
       const statusIcon = record.status === 'present' ? 'ph-check-circle' : record.status === 'absent' ? 'ph-x-circle' : 'ph-clock';
       const statusText = record.status === 'present' ? 'Present' : record.status === 'absent' ? 'Absent' : 'Late';
+      const overtime = this.isOvertimeRecord(record);
+      if (overtime) row.classList.add('attendance-overtime-row');
+      const hoursValue = Number(record.hours || 0);
+      const hoursText = Number.isFinite(hoursValue) ? String(hoursValue) : '0';
+      const overtimeBadge = overtime ? '<span class="attendance-overtime-pill">OT</span>' : '';
 
       row.innerHTML = `
         <td>
@@ -583,11 +718,11 @@ class Attendance {
           <div class="attendance-position">${(this.employeeIndex[String(record.employee_id)]?.position) || '?'}</div>
         </td>
         <td><span class="badge ${statusBadgeClass}"><i class="ph ${statusIcon}"></i>${statusText}</span></td>
-        <td>${record.clock_in || '-'}</td>
-        <td>${record.clock_out || '-'}</td>
-        <td>${record.hours || '0'}</td>
+        <td>${this.formatTimeCell(record.clock_in)}</td>
+        <td>${this.formatTimeCell(record.clock_out)}</td>
+        <td>${hoursText} ${overtimeBadge}</td>
         <td>${record.notes || '-'}</td>
-        <td><button class="btn btn-secondary btn-sm edit-btn" data-id="${record.id}" data-name="${record.employee_name}" data-status="${record.status}" data-checkin="${record.clock_in}" data-checkout="${record.clock_out}" data-notes="${record.notes}">Edit</button></td>
+        <td><button class="btn btn-secondary btn-sm edit-btn" data-id="${record.id}" data-employee-id="${record.employee_id || ''}" data-name="${record.employee_name || ''}" data-status="${record.status || 'present'}" data-checkin="${this.formatTimeInputValue(record.clock_in)}" data-checkout="${this.formatTimeInputValue(record.clock_out)}" data-notes="${record.notes || ''}" data-date="${dateValue}" data-hours="${hoursText}">Edit</button></td>
       `;
       tbody.appendChild(row);
     });
@@ -595,6 +730,7 @@ class Attendance {
 
   setupEventListeners() {
     const addWorkerBtn = document.getElementById('addWorkerBtn');
+    const bulkAddBtn = document.getElementById('bulkAddAttendanceBtn');
     const clockInBtn = document.getElementById('clockInBtn');
     const deleteBtn = document.getElementById('deleteAttendanceBtn');
     const dateFilter = document.getElementById('dateFilter');
@@ -620,14 +756,33 @@ class Attendance {
     if (addWorkerBtn) {
       addWorkerBtn.addEventListener('click', (e) => {
         e.preventDefault();
+        if (this.isDemoMode()) {
+          notify('Demo mode is read-only.', 'warn');
+          return;
+        }
         console.log('Add Worker button clicked');
         this.showRollCallModal();
+      });
+    }
+
+    if (bulkAddBtn) {
+      bulkAddBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (this.isDemoMode()) {
+          notify('Demo mode is read-only.', 'warn');
+          return;
+        }
+        this.showBulkAddModal();
       });
     }
     
     if (clockInBtn) {
       clockInBtn.addEventListener('click', (e) => {
         e.preventDefault();
+        if (this.isDemoMode()) {
+          notify('Demo mode is read-only.', 'warn');
+          return;
+        }
         console.log('Clock In button clicked');
         this.showClockInModal();
       });
@@ -658,6 +813,10 @@ class Attendance {
     if (deleteBtn) {
       deleteBtn.addEventListener('click', async (e) => {
         e.preventDefault();
+        if (this.isDemoMode()) {
+          notify('Demo mode is read-only.', 'warn');
+          return;
+        }
         const selected = Array.from(document.querySelectorAll('.attn-select:checked'))
           .map((el) => el.getAttribute('data-id'))
           .filter(Boolean);
@@ -695,14 +854,16 @@ class Attendance {
         // Get data from the button's parent row
         const row = btn.closest('tr');
         if (row) {
-          const cells = row.cells;
           const data = {
             id: btn.dataset.id || row.rowIndex,
-            name: cells[0]?.textContent || 'N/A',
-            status: btn.dataset.status || this.extractStatus(cells[1]),
-            checkin: btn.dataset.checkin || cells[2]?.textContent || '',
-            checkout: btn.dataset.checkout || cells[3]?.textContent || '',
-            notes: btn.dataset.notes || cells[5]?.textContent || ''
+            employeeId: btn.dataset.employeeId || '',
+            name: btn.dataset.name || 'N/A',
+            status: btn.dataset.status || 'present',
+            date: btn.dataset.date || normalizeDateValue(document.getElementById('dateFilter')?.value || getLocalDateString()),
+            checkin: btn.dataset.checkin || '',
+            checkout: btn.dataset.checkout || '',
+            hours: parseFloat(btn.dataset.hours || '0') || 0,
+            notes: btn.dataset.notes || ''
           };
           this.showEditModal(data);
         }
@@ -724,246 +885,126 @@ class Attendance {
     const modal = document.createElement('div');
     modal.style.cssText = `
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      inset: 0;
       background: rgba(0, 0, 0, 0.85);
       backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      animation: fadeIn 0.2s ease;
     `;
-    
+    const safeDate = normalizeDateValue(data.date || getLocalDateString());
+    const safeCheckIn = this.formatTimeInputValue(data.checkin);
+    const safeCheckOut = this.formatTimeInputValue(data.checkout);
+    const safeHours = Number(data.hours || 0);
+    const overtimeChecked = safeHours > 8 || String(data.notes || '').toLowerCase().includes('overtime');
+
     modal.innerHTML = `
-      <style>
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from { 
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to { 
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .modal-select option {
-          background: #000;
-          color: #fff;
-          padding: 8px;
-        }
-        .modal-select option:hover {
-          background: #111;
-        }
-      </style>
       <div style="
         background: #111;
-        backdrop-filter: blur(20px);
         border: 1px solid #222;
         border-radius: 16px;
-        padding: 32px;
-        width: 90%;
-        max-width: 500px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-        animation: slideUp 0.3s ease;
+        padding: 24px;
+        width: 92%;
+        max-width: 520px;
+        max-height: 92vh;
+        overflow-y: auto;
       ">
-        <h2 style="
-          margin-bottom: 24px;
-          font-size: 1.75rem;
-          font-weight: 700;
-          color: #fff;
-          background: #000;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        ">Edit Attendance - ${data.name}</h2>
-        
-        <div style="margin: 20px 0">
-          <label style="
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #999;
-            font-size: 0.95rem;
-          ">Status:</label>
-          <select id="editStatusSelect" class="input modal-select" style="
-            width: 100%;
-            padding: 12px 16px;
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-          ">
+        <h2 style="margin:0 0 16px;color:#fff;">Edit Attendance - ${data.name || 'Employee'}</h2>
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Date</label>
+          <input type="date" id="editDate" class="input" value="${safeDate}" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;color-scheme:dark;">
+        </div>
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Status</label>
+          <select id="editStatusSelect" class="input" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;">
             <option value="present" ${data.status === 'present' ? 'selected' : ''}>Present</option>
             <option value="late" ${data.status === 'late' ? 'selected' : ''}>Late</option>
             <option value="absent" ${data.status === 'absent' ? 'selected' : ''}>Absent</option>
           </select>
         </div>
-        
-        <div style="margin: 20px 0">
-          <label style="
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #999;
-            font-size: 0.95rem;
-          ">Check In:</label>
-          <input type="time" id="editCheckIn" class="input" style="
-            width: 100%;
-            padding: 12px 16px;
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            color-scheme: dark;
-          " value="${data.checkin || ''}">
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Check In</label>
+          <input type="time" id="editCheckIn" class="input" value="${safeCheckIn}" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;color-scheme:dark;">
         </div>
-        
-        <div style="margin: 20px 0">
-          <label style="
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #999;
-            font-size: 0.95rem;
-          ">Check Out:</label>
-          <input type="time" id="editCheckOut" class="input" style="
-            width: 100%;
-            padding: 12px 16px;
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            color-scheme: dark;
-          " value="${data.checkout || ''}">
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Check Out</label>
+          <input type="time" id="editCheckOut" class="input" value="${safeCheckOut}" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;color-scheme:dark;">
         </div>
-        
-        <div style="margin: 20px 0">
-          <label style="
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #999;
-            font-size: 0.95rem;
-          ">Notes:</label>
-          <textarea id="editNotes" class="input" style="
-            width: 100%;
-            padding: 12px 16px;
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 1rem;
-            resize: vertical;
-            min-height: 80px;
-            font-family: inherit;
-            transition: all 0.3s ease;
-          ">${data.notes || ''}</textarea>
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Hours</label>
+          <input type="number" id="editHours" class="input" min="0" step="0.25" value="${safeHours}" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;">
         </div>
-        
-        <div style="display: flex; gap: 12px; margin-top: 24px">
-          <button id="cancelEditBtn" class="btn btn-secondary" style="
-            flex: 1;
-            padding: 12px 24px;
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 12px;
-            color: #fff;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-          ">Cancel</button>
-          <button id="saveEditBtn" class="btn btn-primary" style="
-            flex: 1;
-            padding: 12px 24px;
-            background: #000;
-            border: none;
-            border-radius: 12px;
-            color: #fff;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: none;
-          ">Save</button>
+        <div style="margin: 12px 0;display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="editOvertimeToggle" style="width:18px;height:18px;" ${overtimeChecked ? 'checked' : ''}>
+          <label for="editOvertimeToggle" style="color:#bbb;">This is an overtime record</label>
+        </div>
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Notes</label>
+          <textarea id="editNotes" class="input" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;min-height:80px;">${data.notes || ''}</textarea>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px;">
+          <button id="cancelEditBtn" class="btn btn-secondary" style="flex:1;">Cancel</button>
+          <button id="saveEditBtn" class="btn btn-primary" style="flex:1;">Save</button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
 
-    // Add hover effects
-    const inputs = modal.querySelectorAll('.input');
-    inputs.forEach(input => {
-      input.addEventListener('focus', function() {
-        this.style.background = '#111';
-        this.style.borderColor = '#fff';
-        this.style.boxShadow = '0 0 12px #111';
-      });
-      input.addEventListener('blur', function() {
-        this.style.background = '#111';
-        this.style.borderColor = '#222';
-        this.style.boxShadow = 'none';
-      });
-    });
-
     const cancelBtn = document.getElementById('cancelEditBtn');
     const saveBtn = document.getElementById('saveEditBtn');
+    cancelBtn.addEventListener('click', () => modal.remove());
 
-    cancelBtn.addEventListener('mouseenter', function() {
-      this.style.background = '#111';
-      this.style.borderColor = '#fff';
-      this.style.transform = 'translateY(-1px)';
-    });
-    cancelBtn.addEventListener('mouseleave', function() {
-      this.style.background = '#111';
-      this.style.borderColor = '#222';
-      this.style.transform = 'translateY(0)';
-    });
-
-    saveBtn.addEventListener('mouseenter', function() {
-      this.style.transform = 'translateY(-2px)';
-      this.style.boxShadow = 'none';
-      this.style.filter = 'brightness(1.1)';
-    });
-    saveBtn.addEventListener('mouseleave', function() {
-      this.style.transform = 'translateY(0)';
-      this.style.boxShadow = 'none';
-      this.style.filter = 'brightness(1)';
-    });
-
-    // Cancel button handler
-    cancelBtn.addEventListener('click', () => {
-      modal.remove();
-    });
-
-    // Save button handler
     saveBtn.addEventListener('click', async () => {
+      if (self.isDemoMode()) {
+        notify('Demo mode is read-only.', 'warn');
+        return;
+      }
       const status = document.getElementById('editStatusSelect').value;
+      const date = normalizeDateValue(document.getElementById('editDate').value || getLocalDateString());
       const checkIn = document.getElementById('editCheckIn').value;
       const checkOut = document.getElementById('editCheckOut').value;
+      const hours = parseFloat(document.getElementById('editHours').value || '0') || 0;
+      const overtime = Boolean(document.getElementById('editOvertimeToggle')?.checked);
       const notes = document.getElementById('editNotes').value;
 
-      console.log('Saving attendance:', { id: data.id, status, checkIn, checkOut, notes });
+      try {
+        const sameDay = await self.db.getAttendance({ date });
+        const duplicate = (sameDay || []).find((r) =>
+          String(r.employee_id || '') === String(data.employeeId || '')
+          && String(r.id || '') !== String(data.id || '')
+        );
+        if (duplicate && !overtime) {
+          notify('Duplicate blocked: this worker already has attendance for that date. Enable overtime to allow it.', 'warn');
+          return;
+        }
+      } catch (e) {
+        console.warn('Duplicate check on edit failed', e);
+      }
+
+      const finalNotes = overtime && !String(notes || '').toLowerCase().includes('overtime')
+        ? `${notes ? `${notes} | ` : ''}Overtime`
+        : notes;
 
       await self.db.updateAttendance(data.id, {
+        date,
         status,
         clock_in: checkIn,
         clock_out: checkOut,
-        notes
+        notes: finalNotes,
+        hours
       });
+
+      if (overtime || hours > 8) {
+        await self.notifyOvertimeAdded([{
+          employee_name: data.name,
+          date,
+          overtimeHours: Math.max(0, hours - 8)
+        }]);
+      }
+
       modal.remove();
-      await self.loadAttendanceData();
+      await self.refreshAfterInput();
       if (window.app && typeof window.app.showToast === 'function') window.app.showToast('Attendance updated', 'success');
     });
   }
@@ -1110,6 +1151,11 @@ class Attendance {
           <input type="number" id="overtimeHours" class="input" min="0" step="0.25" placeholder="0" style="width:100%;padding:12px 16px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;font-size:1rem;transition:all 0.3s ease;">
         </div>
 
+        <div style="margin: 18px 0;">
+          <label style="display:block;margin-bottom:8px;font-weight:500;color:#999;font-size:0.95rem;">Notes</label>
+          <textarea id="attendanceNotesInput" class="input" placeholder="Add notes for this attendance record" style="width:100%;padding:12px 16px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;font-size:1rem;transition:all 0.3s ease;min-height:80px;resize:vertical;"></textarea>
+        </div>
+
         <div style="display: flex; gap: 12px; margin-top: 24px">
           <button id="cancelRollCall" class="btn btn-secondary" style="
             flex: 1;
@@ -1210,12 +1256,17 @@ class Attendance {
 
     // Mark button handler
     markBtn.addEventListener('click', async () => {
+      if (self.isDemoMode()) {
+        notify('Demo mode is read-only.', 'warn');
+        return;
+      }
       const employeeSelect = document.getElementById('employeeSelect');
       const employeeId = employeeSelect.value;
       const employeeName = employeeSelect.options[employeeSelect.selectedIndex].text;
       const status = document.getElementById('statusSelect').value;
       const overtime = Boolean(document.getElementById('overtimeToggle')?.checked);
       const overtimeHours = parseFloat(document.getElementById('overtimeHours')?.value || '0') || 0;
+      const customNotes = String(document.getElementById('attendanceNotesInput')?.value || '').trim();
       
       // Don't proceed if no valid employee selected
       if (!employeeId || employeeName === 'Loading employees...' || employeeName === 'No employees found' || employeeName === 'Error loading employees') {
@@ -1224,36 +1275,21 @@ class Attendance {
       }
       
       const selectedDate = normalizeDateValue(document.getElementById('attendanceDateInput')?.value || getLocalDateString());
-      const now = new Date(`${selectedDate}T00:00:00`);
-      const crewFilter = document.getElementById('crewFilter');
 
       try {
         const existing = await self.db.getAttendance({ date: selectedDate });
         const record = (existing || []).find((r) => String(r.employee_id) === String(employeeId));
         if (record && !overtime) {
-          const updates = { status: 'present' };
-          if (overtimeHours > 0) {
-            updates.hours = (record.hours || 8) + overtimeHours;
-            updates.notes = `Overtime: ${overtimeHours} hrs`;
-          }
-          if (time) {
-            if (!record.clock_in) {
-              updates.clock_in = time;
-            } else if (!record.clock_out) {
-              updates.clock_out = time;
-            } else {
-              notify('Clock in/out already recorded. Use overtime to add another entry.', 'warn');
-              return;
-            }
-          }
-          await self.db.updateAttendance(record.id, updates);
-          modal.remove();
-          await self.loadAttendanceData();
-          if (window.app && typeof window.app.showToast === 'function') window.app.showToast('Attendance updated', 'success');
+          notify('Duplicate blocked: this worker already has attendance for that date. Use overtime for an extra entry.', 'warn');
           return;
         }
       } catch (e) {
         console.warn('Attendance duplicate check failed', e);
+      }
+
+      if (overtime && overtimeHours <= 0) {
+        notify('Enter overtime hours greater than 0 for overtime records.', 'warn');
+        return;
       }
 
       const attendanceData = {
@@ -1263,8 +1299,8 @@ class Attendance {
         date: selectedDate,
         clock_in: '07:00',
         clock_out: '15:00',
-        hours: 8 + overtimeHours,
-        notes: overtimeHours > 0 ? `Overtime: ${overtimeHours} hrs` : (overtime ? 'Overtime entry' : ''),
+        hours: overtime ? overtimeHours : (8 + overtimeHours),
+        notes: [customNotes, (overtime || overtimeHours > 0) ? `Overtime: ${overtimeHours} hrs` : ''].filter(Boolean).join(' | '),
         site_id: (localStorage.getItem('huly_active_site') || '')
       };
       
@@ -1273,13 +1309,159 @@ class Attendance {
       try {
         await self.db.markAttendance(attendanceData);
         console.log('Attendance marked successfully');
+        if (overtime || overtimeHours > 0) {
+          await self.notifyOvertimeAdded([{
+            employee_name: employeeName,
+            date: selectedDate,
+            overtimeHours
+          }]);
+        }
         modal.remove();
-        await self.loadAttendanceData();
+        await self.refreshAfterInput();
         if (window.app && typeof window.app.showToast === 'function') window.app.showToast('Attendance marked', 'success');
       } catch (err) {
         console.error('Error marking attendance:', err);
         notify('Failed to mark attendance. Please try again.', 'error');
       }
+    });
+  }
+
+  showBulkAddModal() {
+    const self = this;
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    `;
+
+    modal.innerHTML = `
+      <div style="background:#111;border:1px solid #222;border-radius:16px;padding:24px;width:92%;max-width:560px;max-height:92vh;overflow-y:auto;">
+        <h2 style="margin:0 0 14px 0;color:#fff;">Bulk Add Attendance</h2>
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Date</label>
+          <input type="date" id="bulkDateInput" class="input" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;color-scheme:dark;" value="${getLocalDateString()}">
+        </div>
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Status</label>
+          <select id="bulkStatusSelect" class="input" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;">
+            <option value="present">Present</option>
+            <option value="late">Late</option>
+            <option value="absent">Absent</option>
+          </select>
+        </div>
+        <div style="margin: 12px 0;display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="bulkOvertimeToggle" style="width:18px;height:18px;">
+          <label for="bulkOvertimeToggle" style="color:#bbb;">Allow overtime duplicate entries</label>
+        </div>
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Overtime Hours</label>
+          <input type="number" id="bulkOvertimeHours" class="input" min="0" step="0.25" value="0" style="width:100%;padding:10px 12px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;">
+        </div>
+        <div style="margin: 12px 0;">
+          <label style="display:block;margin-bottom:6px;color:#bbb;">Select Employees</label>
+          <div id="bulkEmployeeList" style="max-height:220px;overflow:auto;border:1px solid #222;border-radius:12px;padding:10px;background:#0f0f0f;color:#ddd;">Loading employees...</div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px;">
+          <button id="bulkCancelBtn" class="btn btn-secondary" style="flex:1;">Cancel</button>
+          <button id="bulkSaveBtn" class="btn btn-primary" style="flex:1;">Add Selected</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const list = modal.querySelector('#bulkEmployeeList');
+    const cancelBtn = modal.querySelector('#bulkCancelBtn');
+    const saveBtn = modal.querySelector('#bulkSaveBtn');
+
+    this.db.getEmployees().then((employees) => {
+      if (!Array.isArray(employees) || employees.length === 0) {
+        list.innerHTML = 'No employees found.';
+        return;
+      }
+      list.innerHTML = employees.map((emp) => `
+        <label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #1b1b1b;">
+          <input type="checkbox" class="bulk-emp-item" value="${emp.id}">
+          <span>${emp.name || emp.employee_name || 'Unknown'}</span>
+        </label>
+      `).join('');
+    }).catch(() => {
+      list.innerHTML = 'Failed to load employees.';
+    });
+
+    cancelBtn.addEventListener('click', () => modal.remove());
+
+    saveBtn.addEventListener('click', async () => {
+      if (self.isDemoMode()) {
+        notify('Demo mode is read-only.', 'warn');
+        return;
+      }
+      const date = normalizeDateValue(modal.querySelector('#bulkDateInput')?.value || getLocalDateString());
+      const status = modal.querySelector('#bulkStatusSelect')?.value || 'present';
+      const overtime = Boolean(modal.querySelector('#bulkOvertimeToggle')?.checked);
+      const overtimeHours = parseFloat(modal.querySelector('#bulkOvertimeHours')?.value || '0') || 0;
+      const selected = Array.from(modal.querySelectorAll('.bulk-emp-item:checked')).map((el) => String(el.value || ''));
+
+      if (!selected.length) {
+        notify('Select at least one employee.', 'warn');
+        return;
+      }
+      if (overtime && overtimeHours <= 0) {
+        notify('Enter overtime hours greater than 0 for overtime records.', 'warn');
+        return;
+      }
+
+      const employees = await self.db.getEmployees();
+      const nameById = {};
+      (employees || []).forEach((emp) => {
+        nameById[String(emp.id)] = emp.name || emp.employee_name || 'Unknown';
+      });
+
+      let added = 0;
+      let skipped = 0;
+      const overtimeEntries = [];
+      const existing = await self.db.getAttendance({ date });
+
+      for (const employeeId of selected) {
+        const duplicate = (existing || []).find((r) => String(r.employee_id) === String(employeeId));
+        if (duplicate && !overtime) {
+          skipped += 1;
+          continue;
+        }
+        const entry = {
+          employee_id: employeeId,
+          employee_name: nameById[employeeId] || 'Unknown',
+          status,
+          date,
+          clock_in: '07:00',
+          clock_out: '15:00',
+          hours: overtime ? overtimeHours : (8 + overtimeHours),
+          notes: overtime || overtimeHours > 0 ? `Overtime: ${overtimeHours} hrs` : '',
+          site_id: (localStorage.getItem('huly_active_site') || '')
+        };
+        await self.db.markAttendance(entry);
+        added += 1;
+        if (overtime || overtimeHours > 0) {
+          overtimeEntries.push({
+            employee_name: entry.employee_name,
+            date,
+            overtimeHours
+          });
+        }
+      }
+
+      if (overtimeEntries.length) {
+        await self.notifyOvertimeAdded(overtimeEntries);
+      }
+
+      modal.remove();
+      await self.refreshAfterInput();
+      notify(`Bulk add complete: ${added} added, ${skipped} skipped (duplicates).`, added > 0 ? 'success' : 'warn');
     });
   }
 
@@ -1400,6 +1582,11 @@ class Attendance {
           <label style="display:block;margin-bottom:8px;font-weight:500;color:#999;font-size:0.95rem;">Overtime hours</label>
           <input type="number" id="clockOvertimeHours" class="input" min="0" step="0.25" placeholder="0" style="width:100%;padding:12px 16px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;font-size:1rem;transition:all 0.3s ease;">
         </div>
+
+        <div style="margin: 18px 0;">
+          <label style="display:block;margin-bottom:8px;font-weight:500;color:#999;font-size:0.95rem;">Notes</label>
+          <textarea id="clockNotesInput" class="input" placeholder="Add notes for this clock event" style="width:100%;padding:12px 16px;background:#111;border:1px solid #222;border-radius:12px;color:#fff;font-size:1rem;transition:all 0.3s ease;min-height:80px;resize:vertical;"></textarea>
+        </div>
         
         <div style="display: flex; gap: 12px; margin-top: 24px">
           <button id="cancelClock" class="btn btn-secondary" style="
@@ -1497,12 +1684,17 @@ class Attendance {
 
     // Clock In button handler
     confirmBtn.addEventListener('click', async () => {
+      if (self.isDemoMode()) {
+        notify('Demo mode is read-only.', 'warn');
+        return;
+      }
       const employeeSelect = document.getElementById('employeeClockSelect');
       const employeeId = employeeSelect.value;
       const employeeName = employeeSelect.options[employeeSelect.selectedIndex].text;
       const time = document.getElementById('clockTime').value;
       const overtime = Boolean(document.getElementById('clockOvertimeToggle')?.checked);
       const overtimeHours = parseFloat(document.getElementById('clockOvertimeHours')?.value || '0') || 0;
+      const customNotes = String(document.getElementById('clockNotesInput')?.value || '').trim();
       
       // Don't proceed if no valid employee selected
       if (!employeeId || employeeName === 'Loading employees...' || employeeName === 'No employees found' || employeeName === 'Error loading employees') {
@@ -1522,6 +1714,9 @@ class Attendance {
             updates.hours = (record.hours || 8) + overtimeHours;
             updates.notes = `Overtime: ${overtimeHours} hrs`;
           }
+          if (customNotes) {
+            updates.notes = [String(record.notes || '').trim(), customNotes, updates.notes || ''].filter(Boolean).join(' | ');
+          }
           if (time) {
             if (!record.clock_in) {
               updates.clock_in = time;
@@ -1533,13 +1728,25 @@ class Attendance {
             }
           }
           await self.db.updateAttendance(record.id, updates);
+          if (overtimeHours > 0) {
+            await self.notifyOvertimeAdded([{
+              employee_name: employeeName,
+              date: selectedDate,
+              overtimeHours
+            }]);
+          }
           modal.remove();
-          await self.loadAttendanceData();
+          await self.refreshAfterInput();
           if (window.app && typeof window.app.showToast === 'function') window.app.showToast('Attendance updated', 'success');
           return;
         }
       } catch (e) {
         console.warn('Attendance duplicate check failed', e);
+      }
+
+      if (overtime && overtimeHours <= 0) {
+        notify('Enter overtime hours greater than 0 for overtime records.', 'warn');
+        return;
       }
 
       const attendanceData = {
@@ -1549,8 +1756,8 @@ class Attendance {
         date: selectedDate,
         clock_in: time || '07:00',
         clock_out: time ? null : '15:00',
-        hours: (time ? 8 : 8) + overtimeHours,
-        notes: overtimeHours > 0 ? `Overtime: ${overtimeHours} hrs` : (overtime ? 'Overtime entry' : ''),
+        hours: overtime ? overtimeHours : (8 + overtimeHours),
+        notes: [customNotes, (overtime || overtimeHours > 0) ? `Overtime: ${overtimeHours} hrs` : ''].filter(Boolean).join(' | '),
         site_id: (localStorage.getItem('huly_active_site') || '')
       };
       
@@ -1559,8 +1766,15 @@ class Attendance {
       try {
         await self.db.markAttendance(attendanceData);
         console.log('Clocked in successfully');
+        if (overtime || overtimeHours > 0) {
+          await self.notifyOvertimeAdded([{
+            employee_name: employeeName,
+            date: selectedDate,
+            overtimeHours
+          }]);
+        }
         modal.remove();
-        self.loadAttendanceData();
+        await self.refreshAfterInput();
       } catch (err) {
         console.error('Error clocking in:', err);
         notify('Failed to clock in. Please try again.', 'error');

@@ -132,27 +132,49 @@ function getActiveSiteId() {
   }
 }
 
+function isDemoModeEnabled() {
+  try {
+    return localStorage.getItem('huly_demo_mode') === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
 class DatabaseService {
   constructor() {
     this.storagePrefix = 'huly_';
     this.supabase = null;
     this.supabaseHealthy = false;
-    this.supabaseReady = loadSupabase().then(async (client) => {
-      this.supabase = client;
-      if (client) {
-        console.log('Supabase client initialized');
-        await this.checkSupabaseConnection();
-        await this.migrateLocalToSupabase();
-        await this.syncAllTables();
-        await this.fixLegacySiteIds(getActiveSiteId());
-      } else {
-        console.warn('Supabase client unavailable, using Local Storage');
-        setBadgeStatus('local');
-      }
-      return client;
-    });
+    this.demoMode = isDemoModeEnabled();
+    this.supabaseReady = this.demoMode
+      ? Promise.resolve(null)
+      : loadSupabase().then(async (client) => {
+          this.supabase = client;
+          if (client) {
+            console.log('Supabase client initialized');
+            await this.checkSupabaseConnection();
+            await this.migrateLocalToSupabase();
+            await this.syncAllTables();
+            await this.fixLegacySiteIds(getActiveSiteId());
+          } else {
+            console.warn('Supabase client unavailable, using Local Storage');
+            setBadgeStatus('local');
+          }
+          return client;
+        });
     this.initLocalStorage();
+    if (this.demoMode) setBadgeStatus('local', 'Demo Mode');
     console.log('Database service initialized with Local Storage');
+  }
+
+  isDemoMode() {
+    this.demoMode = isDemoModeEnabled();
+    return this.demoMode;
+  }
+
+  assertWritable(action = 'write') {
+    if (!this.isDemoMode()) return;
+    throw new Error(`Demo mode is read-only. Cannot ${action}.`);
   }
 
   async getSupabase() {
@@ -161,6 +183,7 @@ class DatabaseService {
   }
 
   async checkSupabaseConnection() {
+    if (this.isDemoMode()) return false;
     const sb = this.supabase || (await this.supabaseReady);
     if (!sb) {
       this.supabaseHealthy = false;
@@ -196,6 +219,7 @@ class DatabaseService {
   }
 
   async migrateLocalToSupabase() {
+    if (this.isDemoMode()) return;
     const sb = await this.getSupabase();
     if (!sb) return;
 
@@ -328,6 +352,7 @@ class DatabaseService {
 
 
   async fixLegacySiteIds(activeSite) {
+    if (this.isDemoMode()) return;
     const target = activeSite || getActiveSiteId();
     if (!target) return;
     const legacyIds = ['All Crews', 'Crew A', 'Crew B', 'Crew C'];
@@ -344,6 +369,7 @@ class DatabaseService {
   }
 
   async syncAllTables() {
+    if (this.isDemoMode()) return;
     const tables = ['sites', 'employees', 'attendance', 'payroll'];
     for (const table of tables) {
       await this.syncTable(table);
@@ -351,6 +377,7 @@ class DatabaseService {
   }
 
   async syncTable(table) {
+    if (this.isDemoMode()) return;
     try {
       const sb = await this.getSupabase();
       if (!sb || !this.supabaseHealthy) return;
@@ -374,6 +401,7 @@ class DatabaseService {
   // ============ SITES ============
 
   async getSites() {
+    if (this.isDemoMode()) return [];
     try {
       const cached = this.getLocalTable('sites');
       if (cached && cached.length) {
@@ -395,6 +423,7 @@ class DatabaseService {
   }
 
   async createSite(siteData) {
+    this.assertWritable('create site');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -417,6 +446,7 @@ class DatabaseService {
   }
 
   async updateSite(siteId, siteData) {
+    this.assertWritable('update site');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -441,6 +471,7 @@ class DatabaseService {
   }
 
   async deleteSite(siteId) {
+    this.assertWritable('delete site');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -462,6 +493,7 @@ class DatabaseService {
 
   // ============ EMPLOYEES ============
   async getEmployees(siteId = null) {
+    if (this.isDemoMode()) return [];
     try {
       const activeSite = siteId || getActiveSiteId();
       const cached = this.getLocalTable('employees');
@@ -496,6 +528,7 @@ class DatabaseService {
   }
 
   async createEmployee(employeeData) {
+    this.assertWritable('create employee');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -518,11 +551,16 @@ class DatabaseService {
   }
 
   async updateEmployee(employeeId, employeeData) {
+    this.assertWritable('update employee');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
         const { data, error } = await sb.from('employees').update(employeeData).eq('id', employeeId).select().single();
         if (error) throw error;
+        const nextName = employeeData?.name ?? employeeData?.employee_name;
+        if (nextName) {
+          await this.syncAttendanceEmployeeName(employeeId, String(nextName));
+        }
         if (window.audit) window.audit.log('update', 'employee', { id: employeeId, changes: employeeData });
         return data || null;
       }
@@ -531,6 +569,10 @@ class DatabaseService {
       if (index !== -1) {
         employees[index] = { ...employees[index], ...employeeData };
         localStorage.setItem(this.storagePrefix + 'employees', JSON.stringify(employees));
+        const nextName = employeeData?.name ?? employeeData?.employee_name;
+        if (nextName) {
+          await this.syncAttendanceEmployeeName(employeeId, String(nextName));
+        }
         if (window.audit) window.audit.log('update', 'employee', { id: employeeId, changes: employeeData });
         return employees[index];
       }
@@ -541,7 +583,43 @@ class DatabaseService {
     }
   }
 
+  async syncAttendanceEmployeeName(employeeId, employeeName) {
+    const normalizedId = String(employeeId || '');
+    const normalizedName = String(employeeName || '').trim();
+    if (!normalizedId || !normalizedName) return;
+
+    try {
+      const sb = await this.getSupabase();
+      if (sb && this.supabaseHealthy) {
+        const { error } = await sb
+          .from('attendance')
+          .update({ employee_name: normalizedName })
+          .eq('employee_id', normalizedId);
+        if (error) console.warn('Supabase attendance name sync failed', error);
+      }
+    } catch (e) {
+      console.warn('Attendance name sync failed', e);
+    }
+
+    try {
+      const attendance = JSON.parse(localStorage.getItem(this.storagePrefix + 'attendance') || '[]');
+      let changed = false;
+      const next = attendance.map((row) => {
+        if (String(row.employee_id || row.employee_ID) !== normalizedId) return row;
+        if (String(row.employee_name || '') === normalizedName) return row;
+        changed = true;
+        return { ...row, employee_name: normalizedName };
+      });
+      if (changed) {
+        localStorage.setItem(this.storagePrefix + 'attendance', JSON.stringify(next));
+      }
+    } catch (e) {
+      console.warn('Local attendance name sync failed', e);
+    }
+  }
+
   async deleteEmployee(employeeId) {
+    this.assertWritable('delete employee');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -563,6 +641,7 @@ class DatabaseService {
 
   // ============ ATTENDANCE ============
   async getAttendance(filters = {}) {
+    if (this.isDemoMode()) return [];
     try {
       const activeSite = filters.siteId || getActiveSiteId();
       const normalizedDate = normalizeDateValue(filters.date);
@@ -602,6 +681,7 @@ class DatabaseService {
   }
 
   async markAttendance(attendanceData) {
+    this.assertWritable('create attendance');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -663,6 +743,7 @@ class DatabaseService {
   }
 
   async updateAttendance(attendanceId, attendanceData) {
+    this.assertWritable('update attendance');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -682,13 +763,15 @@ class DatabaseService {
           return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
         };
 
-        const updates = {
-          status: attendanceData.status,
-          notes: attendanceData.notes || '',
-          clock_in: toIso(attendanceData.clock_in),
-          clock_out: toIso(attendanceData.clock_out),
-          hours: typeof attendanceData.hours === 'number' ? attendanceData.hours : null
-        };
+        const updates = {};
+        if (attendanceData.status !== undefined) updates.status = attendanceData.status;
+        if (attendanceData.notes !== undefined) updates.notes = attendanceData.notes || '';
+        if (attendanceData.date !== undefined) updates.date = dateStr || attendanceData.date;
+        if (attendanceData.clock_in !== undefined) updates.clock_in = toIso(attendanceData.clock_in);
+        if (attendanceData.clock_out !== undefined) updates.clock_out = toIso(attendanceData.clock_out);
+        if (attendanceData.hours !== undefined) {
+          updates.hours = typeof attendanceData.hours === 'number' ? attendanceData.hours : null;
+        }
         const { data, error } = await sb.from('attendance').update(updates).eq('id', attendanceId).select().single();
         if (error) throw error;
         if (window.audit) window.audit.log('update', 'attendance', { id: attendanceId, changes: attendanceData });
@@ -699,10 +782,12 @@ class DatabaseService {
       if (index === -1) return null;
       attendance[index] = {
         ...attendance[index],
-        status: attendanceData.status,
-        notes: attendanceData.notes || '',
-        clock_in: attendanceData.clock_in || null,
-        clock_out: attendanceData.clock_out || null
+        ...(attendanceData.status !== undefined ? { status: attendanceData.status } : {}),
+        ...(attendanceData.notes !== undefined ? { notes: attendanceData.notes || '' } : {}),
+        ...(attendanceData.date !== undefined ? { date: normalizeDateValue(attendanceData.date) || attendanceData.date } : {}),
+        ...(attendanceData.clock_in !== undefined ? { clock_in: attendanceData.clock_in || null } : {}),
+        ...(attendanceData.clock_out !== undefined ? { clock_out: attendanceData.clock_out || null } : {}),
+        ...(attendanceData.hours !== undefined ? { hours: typeof attendanceData.hours === 'number' ? attendanceData.hours : null } : {})
       };
       localStorage.setItem(this.storagePrefix + 'attendance', JSON.stringify(attendance));
       if (window.audit) window.audit.log('update', 'attendance', { id: attendanceId, changes: attendanceData });
@@ -714,6 +799,7 @@ class DatabaseService {
   }
 
   async deleteAttendance(attendanceId) {
+    this.assertWritable('delete attendance');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -735,6 +821,7 @@ class DatabaseService {
 
   // ============ PAYROLL ============
   async getPayroll(filters = {}) {
+    if (this.isDemoMode()) return [];
     try {
       const activeSite = filters.siteId || getActiveSiteId();
       const cached = this.getLocalTable('payroll');
@@ -768,6 +855,7 @@ class DatabaseService {
   }
 
   async createPayrollRun(payrollData) {
+    this.assertWritable('create payroll');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -790,6 +878,7 @@ class DatabaseService {
   }
 
   async updatePayroll(payrollId, payrollData) {
+    this.assertWritable('update payroll');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -814,6 +903,7 @@ class DatabaseService {
   }
 
   async deletePayroll(payrollId) {
+    this.assertWritable('delete payroll');
     try {
       const sb = await this.getSupabase();
       if (sb && this.supabaseHealthy) {
@@ -834,6 +924,7 @@ class DatabaseService {
   }
 
   async backfillMissingSiteId(siteId = null) {
+    if (this.isDemoMode()) return { updatedLocal: 0, updatedSupabase: 0 };
     const targetSite = siteId || getActiveSiteId();
     if (!targetSite) {
       console.warn('No active site selected for backfill.');
@@ -889,6 +980,7 @@ class DatabaseService {
   }
 
   async consolidateToSite(siteId) {
+    if (this.isDemoMode()) return { updatedLocal: 0, updatedSupabase: 0 };
     const targetSite = siteId || getActiveSiteId();
     if (!targetSite) {
       console.warn('No target site for consolidation.');

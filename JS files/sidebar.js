@@ -138,7 +138,8 @@ $(document).ready(function() {
                 localStorage.setItem('huly_audit', JSON.stringify(pruned));
             } catch (e) {}
             localStorage.removeItem('huly_session');
-            window.location.href = 'login.html';
+            localStorage.removeItem('huly_demo_mode');
+            window.location.href = 'index.html';
         }, 800);
     });
 
@@ -239,11 +240,17 @@ if (!window.__hurlyErrorReporting) {
         if (window.__hurlyLastError && now - window.__hurlyLastError < 30000) return;
         window.__hurlyLastError = now;
         try {
+            let accessToken = '';
+            if (window.__supabaseClient?.auth?.getSession) {
+                const { data } = await window.__supabaseClient.auth.getSession();
+                accessToken = data?.session?.access_token || '';
+            }
+            if (!accessToken) return;
             await fetch(`${base}/notify`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${window.SUPABASE_ANON_KEY || ''}`
+                    'Authorization': `Bearer ${accessToken}`
                 },
                 body: JSON.stringify({
                     event: 'client_error',
@@ -437,10 +444,10 @@ class App {
             sessionStorage.clear();
             
             // Redirect to login
-            window.location.href = 'login.html';
+            window.location.href = 'index.html';
         } catch (error) {
             console.error('Logout error:', error);
-            window.location.href = 'login.html';
+            window.location.href = 'index.html';
         }
     }
     
@@ -456,3 +463,4 @@ class App {
 }
 
 // App initialization disabled (local auth only)
+

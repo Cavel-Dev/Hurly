@@ -841,6 +841,57 @@ select:focus {
     gap: 12px;
 }
 
+.activity-scroll {
+    max-height: 120px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.compact-activity-panel {
+    padding: 14px 14px 12px;
+}
+
+.compact-activity-panel .panel-title {
+    margin-bottom: 8px;
+    font-size: 0.98rem;
+}
+
+.compact-activity-panel .panel-subtitle {
+    margin-bottom: 10px;
+    font-size: 0.82rem;
+}
+
+.compact-activity-panel .snapshot-item {
+    padding: 8px 10px;
+    border-radius: 10px;
+}
+
+.compact-activity-panel .snapshot-item strong {
+    font-size: 0.88rem;
+}
+
+.compact-activity-panel .snapshot-meta {
+    font-size: 11px;
+}
+
+.activity-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.activity-scroll::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+}
+
+.activity-scroll::-webkit-scrollbar-thumb {
+    background: rgba(45, 212, 191, 0.5);
+    border-radius: 999px;
+}
+
+.activity-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(45, 212, 191, 0.72);
+}
+
 .snapshot-item {
     display: flex;
     justify-content: space-between;

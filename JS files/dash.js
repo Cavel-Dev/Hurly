@@ -55,13 +55,15 @@ $(document).ready(function() {
         
         // Clear any stored user data (localStorage, sessionStorage)
         // Note: Add your specific logout logic here
+        localStorage.removeItem('huly_session');
+        localStorage.removeItem('huly_demo_mode');
         
         // Display logout message
         console.log('User logged out successfully');
         
         // Redirect to login page immediately
-        // Replace 'login.html' with your actual login page path
-        window.location.href = 'login.html';
+        // Replace 'index.html' with your actual login page path
+        window.location.href = 'index.html';
         
         // Alternative: If you're using an API, you can make an AJAX call
         /*
@@ -70,7 +72,7 @@ $(document).ready(function() {
             method: 'POST',
             success: function(response) {
                 console.log('Logout successful');
-                window.location.href = 'login.html';
+                window.location.href = 'index.html';
             },
             error: function(error) {
                 console.error('Logout failed:', error);
@@ -134,6 +136,48 @@ $(document).ready(function() {
 
     function getDailyGreeting(name) {
         return `Hey ${name}, ready to roll?`;
+    }
+
+    function readAuditLog() {
+        try {
+            const raw = localStorage.getItem('huly_audit');
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function getEventTimestamp(item = {}) {
+        const candidates = [
+            item.created_at,
+            item.updated_at,
+            item.loginAt,
+            item.ts
+        ];
+        for (const raw of candidates) {
+            if (!raw) continue;
+            const time = new Date(raw).getTime();
+            if (Number.isFinite(time)) return time;
+        }
+        if (item.date) {
+            const time = new Date(`${item.date}T12:00:00`).getTime();
+            if (Number.isFinite(time)) return time;
+        }
+        return 0;
+    }
+
+    function formatDateTime(raw) {
+        if (!raw) return 'Unknown date';
+        const dt = new Date(raw);
+        if (Number.isNaN(dt.getTime())) return 'Unknown date';
+        return dt.toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
     }
 
     async function populateDashboardSites() {
@@ -285,7 +329,9 @@ $(document).ready(function() {
         updateAttendanceTrend(attendanceList);
         updatePayrollProgress(payrollList);
         updatePayrollRuns(payrollList);
-        updateRecentActivity(employeeList, attendanceList, payrollList);
+        const auditLog = readAuditLog();
+        updateRecentActivity(employeeList, attendanceList, payrollList, auditLog);
+        updateLoginActivity(auditLog);
         updateOperationsSnapshot(activeEmployees, attendanceToday.length, payrollList.length, docsPending);
         isUpdating = false;
     }
@@ -384,37 +430,60 @@ $(document).ready(function() {
 
         list.innerHTML = items.join('');
     }
-function updateRecentActivity(employeeList, attendanceList, payrollList) {
+function updateRecentActivity(employeeList, attendanceList, payrollList, auditLog) {
         const list = document.getElementById('recentActivity');
         if (!list) return;
 
         const items = [];
 
-        employeeList.slice(-2).forEach(emp => {
+        employeeList.forEach(emp => {
+            const createdAt = emp.created_at || emp.updated_at || null;
             items.push({
                 title: `Employee added: ${emp.name || emp.Name || 'New hire'}`,
-                meta: 'Employee update',
-                status: 'status-success'
+                meta: createdAt ? `Employee update  ${formatDateTime(createdAt)}` : 'Employee update',
+                status: 'status-success',
+                timestamp: getEventTimestamp(emp)
             });
         });
 
-        attendanceList.slice(-2).forEach(att => {
+        attendanceList.forEach(att => {
+            const statusText = String(att.status || 'present').toLowerCase();
+            const label = att.created_at || (att.date ? `${att.date}T12:00:00` : null);
             items.push({
                 title: `${att.employee_name || att.name || 'Employee'} marked ${att.status || 'present'}`,
-                meta: att.date ? `Attendance on ${att.date}` : 'Attendance update',
-                status: att.status === 'absent' ? 'status-danger' : 'status-success'
+                meta: label ? `Attendance on ${formatDateTime(label)}` : 'Attendance update',
+                status: statusText === 'absent' ? 'status-danger' : 'status-success',
+                timestamp: getEventTimestamp(att)
             });
         });
 
-        payrollList.slice(-1).forEach(run => {
+        payrollList.forEach(run => {
+            const createdAt = run.created_at || null;
             items.push({
                 title: `Payroll run ${run.status || 'Draft'}  ${run.pay_period || 'New period'}`,
-                meta: 'Payroll activity',
-                status: run.status === 'Final' ? 'status-success' : 'status-warning'
+                meta: createdAt ? `Payroll activity  ${formatDateTime(createdAt)}` : 'Payroll activity',
+                status: run.status === 'Final' ? 'status-success' : 'status-warning',
+                timestamp: getEventTimestamp(run)
             });
         });
 
-        const finalItems = items.slice(-5);
+        (auditLog || []).forEach(entry => {
+            const action = String(entry?.action || '').toLowerCase();
+            if (!['login', 'logout', 'login_failed'].includes(action)) return;
+            const actor = entry?.actor?.email || entry?.details?.email || 'Unknown user';
+            const when = entry?.ts || null;
+            items.push({
+                title: `${actor} ${action.replace('_', ' ')}`,
+                meta: when ? `Auth activity  ${formatDateTime(when)}` : 'Auth activity',
+                status: action === 'login_failed' ? 'status-danger' : 'status-warning',
+                timestamp: getEventTimestamp(entry)
+            });
+        });
+
+        const finalItems = items
+            .slice()
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+            .slice(0, 20);
         if (!finalItems.length) {
             list.innerHTML = `
                 <li class="snapshot-item">
@@ -435,6 +504,53 @@ function updateRecentActivity(employeeList, attendanceList, payrollList) {
                     <div class="snapshot-meta">${item.meta}</div>
                 </div>
                 <span class="status-chip ${item.status}">${item.status === 'status-danger' ? 'Alert' : 'Update'}</span>
+            </li>
+        `).join('');
+    }
+
+    function updateLoginActivity(auditLog) {
+        const list = document.getElementById('loginActivity');
+        if (!list) return;
+
+        const entries = (auditLog || [])
+            .filter((entry) => {
+                const action = String(entry?.action || '').toLowerCase();
+                return ['login', 'logout', 'login_failed'].includes(action);
+            })
+            .map((entry) => {
+                const action = String(entry?.action || '').toLowerCase();
+                const actor = entry?.actor?.email || entry?.details?.email || 'Unknown user';
+                return {
+                    title: `${actor}`,
+                    meta: `${action.replace('_', ' ')}  ${formatDateTime(entry?.ts)}`,
+                    status: action === 'login' ? 'status-success' : (action === 'logout' ? 'status-warning' : 'status-danger'),
+                    chip: action === 'login' ? 'Login' : (action === 'logout' ? 'Logout' : 'Failed'),
+                    timestamp: getEventTimestamp(entry)
+                };
+            })
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+            .slice(0, 30);
+
+        if (!entries.length) {
+            list.innerHTML = `
+                <li class="snapshot-item">
+                    <div>
+                        <strong>No login activity yet</strong>
+                        <div class="snapshot-meta">User sessions will show up here</div>
+                    </div>
+                    <span class="status-chip status-warning">Waiting</span>
+                </li>
+            `;
+            return;
+        }
+
+        list.innerHTML = entries.map((item) => `
+            <li class="snapshot-item">
+                <div>
+                    <strong>${item.title}</strong>
+                    <div class="snapshot-meta">${item.meta}</div>
+                </div>
+                <span class="status-chip ${item.status}">${item.chip}</span>
             </li>
         `).join('');
     }
@@ -482,9 +598,23 @@ function updateRecentActivity(employeeList, attendanceList, payrollList) {
     populateDashboardSites();
     applyTimeTheme();
     updateDashboardSnapshot();
+
+    const footer = document.querySelector('.page-footer');
+    const easterEgg = document.getElementById('cavelEasterEgg');
+    if (footer && easterEgg) {
+        footer.addEventListener('dblclick', () => {
+            const visible = easterEgg.style.display !== 'none';
+            easterEgg.style.display = visible ? 'none' : 'inline';
+            if (window.app && typeof window.app.showToast === 'function' && !visible) {
+                window.app.showToast('Easter egg unlocked', 'success');
+            }
+        });
+    }
+
     setInterval(updateDashboardSnapshot, 1000);
     setInterval(applyTimeTheme, 5 * 60 * 1000);
 });
+
 
 
 

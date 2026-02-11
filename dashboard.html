@@ -257,10 +257,10 @@
                         </li>
                     </ul>
                 </div>
-                <div class="panel span-7">
+                <div class="panel span-7 compact-activity-panel">
                     <div class="panel-title">Recent Activity</div>
                     <div class="panel-subtitle">Latest updates across your system</div>
-                    <ul class="snapshot-list" id="recentActivity">
+                    <ul class="snapshot-list activity-scroll" id="recentActivity">
                         <li class="snapshot-item">
                             <div>
                                 <strong>Loading activity...</strong>
@@ -270,9 +270,23 @@
                         </li>
                     </ul>
                 </div>
+                <div class="panel span-5 compact-activity-panel">
+                    <div class="panel-title">Login Activity</div>
+                    <div class="panel-subtitle">Recent sign in/out activity with timestamps</div>
+                    <ul class="snapshot-list activity-scroll" id="loginActivity">
+                        <li class="snapshot-item">
+                            <div>
+                                <strong>Loading login data...</strong>
+                                <div class="snapshot-meta">Please wait</div>
+                            </div>
+                            <span class="status-chip status-warning">Pending</span>
+                        </li>
+                    </ul>
+                </div>
             </div>
             <div class="page-footer">
                 Created by Nora Technologies (a subgroup of Arc Group). Terms and conditions apply.
+                <span id="cavelEasterEgg" style="display:none;margin-left:8px;font-weight:700;">Made by Cavel Ellis</span>
             </div>
         </div>
     </div>

@@ -1,11 +1,14 @@
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ADMIN_SETUP_CODE_HASH = Deno.env.get("ADMIN_SETUP_CODE_HASH") ?? "";
+const ADMIN_CHECK_MAX_ATTEMPTS = Number(Deno.env.get("ADMIN_CHECK_MAX_ATTEMPTS") ?? "8");
+const ADMIN_CHECK_WINDOW_MS = Number(Deno.env.get("ADMIN_CHECK_WINDOW_MS") ?? String(10 * 60 * 1000));
+const adminCheckAttempts = new Map<string, { count: number; resetAt: number }>();
 
 const allowedOriginsRaw = Deno.env.get("ALLOWED_ORIGINS") ?? "*";
 const allowedOrigins = allowedOriginsRaw
@@ -84,7 +87,7 @@ async function supabaseFetch(path: string, opts: RequestInit = {}) {
   });
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") {
     const headers = corsHeaders(origin);
@@ -104,6 +107,9 @@ serve(async (req) => {
   const action = payload?.action;
   const email = String(payload?.email || "").trim().toLowerCase();
   const code = String(payload?.code || "").trim();
+  const ip = (req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown")
+    .split(",")[0]
+    .trim();
 
   if (action === "check_admin") {
     if (!ADMIN_SETUP_CODE_HASH) {
@@ -112,10 +118,24 @@ serve(async (req) => {
     if (!code) {
       return new Response("Missing admin code", { status: 400, headers: corsHeaders(origin) });
     }
+    if (code.length > 128) {
+      return new Response("Invalid admin code", { status: 400, headers: corsHeaders(origin) });
+    }
+    const now = Date.now();
+    const key = `admin:${ip}`;
+    const state = adminCheckAttempts.get(key);
+    if (state && state.resetAt > now && state.count >= ADMIN_CHECK_MAX_ATTEMPTS) {
+      return new Response("Too many attempts. Try again later.", { status: 429, headers: corsHeaders(origin) });
+    }
     const inputHash = await sha256(code);
     if (inputHash !== ADMIN_SETUP_CODE_HASH) {
+      const next = state && state.resetAt > now
+        ? { count: state.count + 1, resetAt: state.resetAt }
+        : { count: 1, resetAt: now + ADMIN_CHECK_WINDOW_MS };
+      adminCheckAttempts.set(key, next);
       return new Response("Unauthorized setup attempt detected.", { status: 401, headers: corsHeaders(origin) });
     }
+    adminCheckAttempts.delete(key);
     return new Response("ok", { status: 200, headers: corsHeaders(origin) });
   }
 
@@ -125,6 +145,9 @@ serve(async (req) => {
 
   if (!email) {
     return new Response("Missing email", { status: 400, headers: corsHeaders(origin) });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return new Response("Invalid email", { status: 400, headers: corsHeaders(origin) });
   }
 
   if (action === "send") {
